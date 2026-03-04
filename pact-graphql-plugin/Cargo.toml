@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pact_plugin_driver = "0.4"
+pact_plugin_driver = { version = "0.4", package = "pact-plugin-driver" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
