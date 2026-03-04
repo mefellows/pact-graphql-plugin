@@ -2,7 +2,7 @@ use pact_graphql_plugin::encoder::{GraphqlRequest, RequestEncoder};
 
 #[test]
 fn encodes_json_payload() {
-    let req = GraphqlRequest::json("query { ping }", None::<String>, None::<String>);
+    let req = GraphqlRequest::json("query { ping }", None, None);
     let encoded = RequestEncoder::encode(&req).unwrap();
 
     assert_eq!(
@@ -31,7 +31,7 @@ fn encodes_json_payload_preserving_field_order() {
 
 #[test]
 fn encodes_query_string_payload() {
-    let req = GraphqlRequest::query_string("query { pong }", None::<String>, None::<String>);
+    let req = GraphqlRequest::query_string("query { pong }", None, None);
     let encoded = RequestEncoder::encode(&req).unwrap();
 
     assert!(encoded.body.is_none());

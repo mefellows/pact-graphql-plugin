@@ -17,34 +17,30 @@ pub struct GraphqlRequest {
 }
 
 impl GraphqlRequest {
-    pub fn json<Q, O, V>(query: Q, operation_name: Option<O>, variables_json: Option<V>) -> Self
+    pub fn json<Q>(query: Q, operation_name: Option<String>, variables_json: Option<String>) -> Self
     where
         Q: Into<String>,
-        O: Into<String>,
-        V: Into<String>,
     {
         Self {
             query_document: query.into(),
-            operation_name: operation_name.map(Into::into),
-            variables_json: variables_json.map(Into::into),
+            operation_name,
+            variables_json,
             transport: Transport::JsonBody,
         }
     }
 
-    pub fn query_string<Q, O, V>(
+    pub fn query_string<Q>(
         query: Q,
-        operation_name: Option<O>,
-        variables_json: Option<V>,
+        operation_name: Option<String>,
+        variables_json: Option<String>,
     ) -> Self
     where
         Q: Into<String>,
-        O: Into<String>,
-        V: Into<String>,
     {
         Self {
             query_document: query.into(),
-            operation_name: operation_name.map(Into::into),
-            variables_json: variables_json.map(Into::into),
+            operation_name,
+            variables_json,
             transport: Transport::QueryString,
         }
     }
