@@ -36,10 +36,11 @@ EOF
 
 **Step 3: Add dependencies**
 
-Edit `pact-graphql-plugin/Cargo.toml` to include:
+Edit `pact-graphql-plugin/Cargo.toml` to include the plugin driver using the alias form (crates.io publishes the hyphenated crate name, so we must map it back to the snake_case dependency key expected by Pact tooling):
 
 ```toml
 [dependencies]
+pact_plugin_driver = { version = "0.4", package = "pact-plugin-driver" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

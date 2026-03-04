@@ -32,6 +32,7 @@ All components communicate via in-memory structs; persistent artifacts (schemas)
 
 ### 3.1 Workspace Bootstrap
 - Promote the repository to a Cargo workspace (`resolver = "2"`) with `pact-graphql-plugin` as the initial member so future crates (helpers, examples) slot in cleanly.
+- Depend on `pact_plugin_driver = { version = "0.4", package = "pact-plugin-driver" }` so Cargo fetches the hyphenated crate published on crates.io while our code keeps using the snake_case module; the shorthand string form will not resolve.
 - Keep the workspace clean with `.gitignore` entries for `target/`, `node_modules/`, `dist/`, `.DS_Store`, and `*.log`.
 - `pact-graphql-plugin` is a binary crate whose `src/main.rs` only spins up Tokio and delegates to `server::run()` from `src/lib.rs`, ensuring all plugin logic lives in the library module for reuse by tests.
 
