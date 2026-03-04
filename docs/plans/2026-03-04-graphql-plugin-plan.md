@@ -54,6 +54,7 @@ anyhow = "1"
 
 ```toml
 [dev-dependencies]
+pretty_assertions = "1"
 ``` 
 
 **Step 5: Wire binary entrypoint**
