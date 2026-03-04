@@ -58,7 +58,7 @@ impl RequestEncoder {
     pub fn encode(request: &GraphqlRequest) -> Result<EncodedRequest> {
         match request.transport {
             Transport::JsonBody => Self::encode_json(request),
-            Transport::QueryString => Ok(Self::encode_query_string(request)),
+            Transport::QueryString => Self::encode_query_string(request),
         }
     }
 
@@ -77,8 +77,7 @@ impl RequestEncoder {
         }
 
         if let Some(variables) = &request.variables_json {
-            let parsed: Value = serde_json::from_str(variables)
-                .with_context(|| "variables_json must be valid JSON".to_string())?;
+            let parsed = parse_variables_json(variables)?;
             payload.insert("variables".to_string(), parsed);
         }
 
@@ -89,7 +88,7 @@ impl RequestEncoder {
         })
     }
 
-    fn encode_query_string(request: &GraphqlRequest) -> EncodedRequest {
+    fn encode_query_string(request: &GraphqlRequest) -> Result<EncodedRequest> {
         let mut params: Vec<(String, String)> = Vec::new();
         params.push(("query".to_string(), request.query_document.clone()));
 
@@ -98,7 +97,9 @@ impl RequestEncoder {
         }
 
         if let Some(variables) = &request.variables_json {
-            params.push(("variables".to_string(), variables.clone()));
+            let parsed = parse_variables_json(variables)?;
+            let canonical = serde_json::to_string(&parsed)?;
+            params.push(("variables".to_string(), canonical));
         }
 
         let query_string = params
@@ -107,13 +108,17 @@ impl RequestEncoder {
             .collect::<Vec<_>>()
             .join("&");
 
-        EncodedRequest {
+        Ok(EncodedRequest {
             body: None,
             query_string: Some(query_string),
-        }
+        })
     }
 }
 
 fn percent_encode_form_value(value: &str) -> String {
     encode(value).replace("%20", "+")
+}
+
+fn parse_variables_json(raw: &str) -> Result<Value> {
+    serde_json::from_str(raw).with_context(|| "variables_json must be valid JSON".to_string())
 }

@@ -40,3 +40,30 @@ fn encodes_query_string_payload() {
         Some("query=query+%7B+pong+%7D")
     );
 }
+
+#[test]
+fn encodes_query_string_with_operation_and_variables() {
+    let pretty_variables = serde_json::to_string_pretty(&serde_json::json!({ "id": 10 })).unwrap();
+    let req = GraphqlRequest::query_string(
+        "query { ping }",
+        Some("PingQuery".to_string()),
+        Some(pretty_variables),
+    );
+    let encoded = RequestEncoder::encode(&req).unwrap();
+
+    assert!(encoded.body.is_none());
+    assert_eq!(
+        encoded.query_string.as_deref(),
+        Some("query=query+%7B+ping+%7D&operationName=PingQuery&variables=%7B%22id%22%3A10%7D")
+    );
+}
+
+#[test]
+fn query_string_variables_invalid_json_errors() {
+    let req = GraphqlRequest::query_string("query { ping }", None, Some("{".to_string()));
+    let err = RequestEncoder::encode(&req).unwrap_err();
+
+    assert!(err
+        .to_string()
+        .contains("variables_json must be valid JSON"));
+}
