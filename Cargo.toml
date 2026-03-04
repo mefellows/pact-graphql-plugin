@@ -1,0 +1,3 @@
+[workspace]
+members = ["pact-graphql-plugin"]
+resolver = "2"
