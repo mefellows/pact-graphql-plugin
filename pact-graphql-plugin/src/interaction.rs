@@ -23,6 +23,7 @@ pub struct GraphqlPluginRequest {
     pub query_document: String,
     pub operation_name: Option<String>,
     pub variables_json: Option<String>,
+    #[serde(default)]
     pub transport: Transport,
     pub schema_sdl: Option<String>,
 }
