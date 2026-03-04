@@ -13,6 +13,23 @@ fn encodes_json_payload() {
 }
 
 #[test]
+fn encodes_json_payload_preserving_field_order() {
+    let variables = serde_json::json!({ "id": 10 }).to_string();
+    let req = GraphqlRequest::json(
+        "query { ping }",
+        Some("PingQuery".to_string()),
+        Some(variables),
+    );
+    let encoded = RequestEncoder::encode(&req).unwrap();
+
+    assert_eq!(
+        encoded.body.as_deref(),
+        Some(r#"{"query":"query { ping }","operationName":"PingQuery","variables":{"id":10}}"#,)
+    );
+    assert!(encoded.query_string.is_none());
+}
+
+#[test]
 fn encodes_query_string_payload() {
     let req = GraphqlRequest::query_string("query { pong }", None::<String>, None::<String>);
     let encoded = RequestEncoder::encode(&req).unwrap();
