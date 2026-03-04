@@ -1,11 +1,19 @@
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use urlencoding::encode;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Transport {
     JsonBody,
     QueryString,
+}
+
+impl Default for Transport {
+    fn default() -> Self {
+        Transport::JsonBody
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
