@@ -49,8 +49,17 @@ impl SchemaRegistry {
     }
 
     pub fn inline_schema(&self, hash: &str) -> anyhow::Result<String> {
+        validate_hash(hash)?;
         let path = self.root.join(format!("{}.graphql", hash));
         fs::read_to_string(&path)
             .with_context(|| format!("failed to read schema file {}", path.display()))
     }
+}
+
+fn validate_hash(hash: &str) -> anyhow::Result<()> {
+    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        bail!("invalid schema hash: {}", hash);
+    }
+
+    Ok(())
 }
