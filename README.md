@@ -14,39 +14,49 @@ npm install --save-dev @pact-foundation/pact @pact-foundation/pact-graphql-helpe
 ```
 
 ```ts
-import { pactWith } from '@pact-foundation/pact/v3';
+import { PactV4 } from '@pact-foundation/pact';
 import { graphqlInteraction } from '@pact-foundation/pact-graphql-helper';
 
-pactWith({ consumer: 'product-consumer', provider: 'product-provider' }, (interaction) => {
-  interaction('fetch a product via GraphQL', async (builder) => {
-    await graphqlInteraction(builder, {
-      schema: readFileSync('schema.graphql', 'utf8'),
-      query: `
-        query GetProduct($id: ID!) {
-          product(id: $id) {
-            id
-            name
-            type
-          }
-        }
-      `,
+const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+const interaction = pact.addInteraction('fetch a product via GraphQL');
+const query = `
+    query GetProduct($id: ID!) {
+      product(id: $id) {
+        id
+        name
+        type
+      }
+    }
+  `;
+
+const pluginInteraction = await graphqlInteraction(interaction, {
+  schema: readFileSync('schema.graphql', 'utf8'),
+  query,
+  variables: { id: '10' },
+  operationName: 'GetProduct',
+});
+
+pluginInteraction.willRespondWith(200, (builder) => {
+  builder.jsonBody({
+    data: {
+      product: {
+        id: '10',
+        name: 'product name',
+        type: 'product series',
+      },
+    },
+  });
+});
+
+await pact.executeTest(async (mockServer) => {
+  await fetch(`${mockServer.url}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      query,
       variables: { id: '10' },
       operationName: 'GetProduct',
-    });
-
-    builder.willRespondWith({
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      body: {
-        data: {
-          product: {
-            id: '10',
-            name: 'product name',
-            type: 'product series',
-          },
-        },
-      },
-    });
+    }),
   });
 });
 ```

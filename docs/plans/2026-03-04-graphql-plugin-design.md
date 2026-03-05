@@ -64,28 +64,30 @@ All components communicate via in-memory structs; persistent artifacts (schemas)
 - Helper package: `js/pact-graphql-helper` (published as `@pact-foundation/pact-graphql-helper`) exposes `graphqlInteraction(builder, options)` plus `GraphqlRequestOptions`/`GraphqlTransport` types. It dedents the query, validates/serializes variables, defaults the transport to `json_body`, and forwards the config to `builder.usingPlugin({ pluginName: 'graphql', configuration })`.
 - Example usage:
 ```ts
-import { pactWith } from '@pact-foundation/pact/v3';
+import { PactV4 } from '@pact-foundation/pact';
 import { graphqlInteraction } from '@pact-foundation/pact-graphql-helper';
 
-pactWith({ consumer: 'product-consumer', provider: 'product-provider' }, (interaction) => {
-  interaction('fetch product', async (builder) => {
-    await graphqlInteraction(builder, {
-      schema: readFileSync('schema.graphql', 'utf8'),
-      query: `
-        query GetProduct($id: ID!) {
-          product(id: $id) {
-            id
-            name
-            type
-          }
-        }
-      `,
-      variables: { id: '10' },
-      operationName: 'GetProduct',
-    });
+const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+const interaction = pact.addInteraction('fetch product');
+const query = `
+  query GetProduct($id: ID!) {
+    product(id: $id) {
+      id
+      name
+      type
+    }
+  }
+`;
 
-    builder.willRespondWith({ status: 200, body: { data: { product: { id: '10' } } } });
-  });
+const pluginInteraction = await graphqlInteraction(interaction, {
+  schema: readFileSync('schema.graphql', 'utf8'),
+  query,
+  variables: { id: '10' },
+  operationName: 'GetProduct',
+});
+
+pluginInteraction.willRespondWith(200, (builder) => {
+  builder.jsonBody({ data: { product: { id: '10' } } });
 });
 ```
 - The helper ships with Vitest coverage (JSON body + query-string transport) and is linked into the example consumer via a `file:` dependency until it is published.

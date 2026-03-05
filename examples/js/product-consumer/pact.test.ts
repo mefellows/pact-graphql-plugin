@@ -1,32 +1,37 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { pactWith } from '@pact-foundation/pact/v3';
+import { describe, it } from 'vitest';
+import { PactV4 } from '@pact-foundation/pact';
 import { graphqlInteraction } from 'pact-graphql-helper';
 
-pactWith({ consumer: 'product-consumer', provider: 'product-provider' }, (interaction) => {
-  interaction('fetch product via GraphQL', async (builder) => {
-    await graphqlInteraction(builder, {
-      schema: readFileSync(resolve(__dirname, 'schema.graphql'), 'utf8'),
-      query: `
-        query GetProduct($id: ID!) {
-          product(id: $id) {
-            id
-            name
-            type
-          }
-        }
-      `,
+const schema = readFileSync(resolve(__dirname, 'schema.graphql'), 'utf8');
+const query = `
+  query GetProduct($id: ID!) {
+    product(id: $id) {
+      id
+      name
+      type
+    }
+  }
+`;
+
+describe('GraphQL pact', () => {
+  it('configures an interaction via the plugin', async () => {
+    const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+    const interaction = pact.addInteraction();
+
+    const pluginInteraction = await graphqlInteraction(interaction, {
+      schema,
+      query,
       variables: { id: '10' },
       operationName: 'GetProduct',
     });
 
-    builder.given('a product with ID 10 exists');
-    builder.uponReceiving('a GraphQL product request');
-    builder.willRespondWith({
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      body: {
+    pluginInteraction.given('a product with ID 10 exists');
+    pluginInteraction.uponReceiving('a GraphQL product request');
+    pluginInteraction.willRespondWith(200, (builder) => {
+      builder.jsonBody({
         data: {
           product: {
             id: '10',
@@ -34,7 +39,19 @@ pactWith({ consumer: 'product-consumer', provider: 'product-provider' }, (intera
             type: 'product series',
           },
         },
-      },
+      });
+    });
+
+    await pact.executeTest(async (mockServer) => {
+      await fetch(`${mockServer.url}/graphql`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          variables: { id: '10' },
+          operationName: 'GetProduct',
+        }),
+      });
     });
   });
 });
