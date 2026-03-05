@@ -61,31 +61,39 @@ All components communicate via in-memory structs; persistent artifacts (schemas)
 - Metadata is exposed through `GetMetadata` so provider tooling can download schema artifacts later.
 
 ### 7. Consumer Experience (JS/TS v1)
-- Publish npm helper `@pact-foundation/pact-graphql` exposing:
-  - `graphqlInteraction(builder, options)` wrapper that collects GraphQL specifics and calls into the plugin driver.
-  - TypeScript definitions for `GraphqlRequestOptions` (`schema`, `query`, `variables`, `operationName`, `transport`).
-  - `gql` template helper and `loadSchemaFromFile` utility for readability.
+- Helper package: `js/pact-graphql-helper` (published as `@pact-foundation/pact-graphql-helper`) exposes `graphqlInteraction(builder, options)` plus `GraphqlRequestOptions`/`GraphqlTransport` types. It dedents the query, validates/serializes variables, defaults the transport to `json_body`, and forwards the config to `builder.usingPlugin({ pluginName: 'graphql', configuration })`.
 - Example usage:
 ```ts
-import { graphqlInteraction, gql } from '@pact-foundation/pact-graphql';
+import { pactWith } from '@pact-foundation/pact/v3';
+import { graphqlInteraction } from '@pact-foundation/pact-graphql-helper';
 
-graphqlInteraction(builder, {
-  schema: fs.readFileSync('schema.graphql', 'utf8'),
-  query: gql`
-    query GetProduct($id: ID!) {
-      product(id: $id) { id name type }
-    }
-  `,
-  variables: { id: '10' },
-  transport: 'json_body'
+pactWith({ consumer: 'product-consumer', provider: 'product-provider' }, (interaction) => {
+  interaction('fetch product', async (builder) => {
+    await graphqlInteraction(builder, {
+      schema: readFileSync('schema.graphql', 'utf8'),
+      query: `
+        query GetProduct($id: ID!) {
+          product(id: $id) {
+            id
+            name
+            type
+          }
+        }
+      `,
+      variables: { id: '10' },
+      operationName: 'GetProduct',
+    });
+
+    builder.willRespondWith({ status: 200, body: { data: { product: { id: '10' } } } });
+  });
 });
 ```
-- The helper injects returned HTTP body + metadata into the standard Pact DSL, so existing mock servers continue to work unchanged.
+- The helper ships with Vitest coverage (JSON body + query-string transport) and is linked into the example consumer via a `file:` dependency until it is published.
 
-### 8. Testing Strategy
+### 8. Testing & Examples
 - **Rust unit tests**: cover request encoding, variables serialization, schema hashing/embedding, and validation failures (missing query, invalid JSON, unsupported transport).
 - **Integration tests (Rust)**: spin up plugin via `pact_plugin_driver` test harness to verify ConfigureInteraction → GenerateContent flow produces deterministic pact files for both transports.
-- **Consumer example tests (JS)**: generate a pact using the helper, inspect resulting pact JSON for expected `plugin_config.graphql` block.
+- **Consumer example tests (JS)**: `examples/js/product-consumer/pact.test.ts` uses the helper in a realistic Pact JS test. Run `npm install && npm run test` inside that directory once the GraphQL plugin is installed under `$HOME/.pact/plugins`.
 - **Verifier smoke test**: run Pact verifier with the plugin against a mock GraphQL provider to ensure stored payloads replay correctly.
 
 ### 9. Risks & Future Work

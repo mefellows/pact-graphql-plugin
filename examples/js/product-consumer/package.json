@@ -1,0 +1,21 @@
+{
+  "name": "product-consumer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@pact-foundation/pact": "^16.2.0",
+    "@types/node": "^25.3.3",
+    "pact-graphql-helper": "file:../../../js/pact-graphql-helper",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
