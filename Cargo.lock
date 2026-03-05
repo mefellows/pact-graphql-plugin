@@ -1638,14 +1638,18 @@ dependencies = [
  "base64 0.22.1",
  "pact-plugin-driver",
  "pretty_assertions",
+ "prost-types",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tracing",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

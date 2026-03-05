@@ -14,6 +14,10 @@ tracing = "0.1"
 anyhow = "1"
 sha2 = "0.10"
 base64 = "0.22"
+tonic = { version = "0.9", features = ["transport"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+uuid = { version = "1", features = ["v4"] }
+prost-types = "0.11.9"
 
 [dev-dependencies]
 pretty_assertions = "1"
