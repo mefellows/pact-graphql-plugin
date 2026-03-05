@@ -29,6 +29,9 @@ const query = `
     }
   `;
 
+interaction.given('a product with ID 10 exists');
+interaction.uponReceiving('a GraphQL product request');
+
 const pluginInteraction = await graphqlInteraction(interaction, {
   schema: readFileSync('schema.graphql', 'utf8'),
   query,

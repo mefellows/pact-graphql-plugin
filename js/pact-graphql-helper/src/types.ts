@@ -9,7 +9,8 @@ export interface GraphqlRequestOptions {
 }
 
 export interface PluginInvocationOptions {
-  pluginName: string;
+  plugin: string;
+  version: string;
   configuration: Record<string, unknown>;
 }
 

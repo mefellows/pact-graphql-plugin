@@ -30,7 +30,8 @@ describe('graphqlInteraction', () => {
 
     expect(builder.calls).toHaveLength(1);
     const call = builder.calls[0];
-    expect(call.pluginName).toBe('graphql');
+    expect(call.plugin).toBe('graphql');
+    expect(call.version).toBe('0.0.0');
     expect(call.configuration.transport).toBe('json_body');
     expect(call.configuration.query_document).toContain('query Ping');
     expect(call.configuration.operation_name).toBe('PingQuery');

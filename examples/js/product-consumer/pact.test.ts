@@ -21,15 +21,15 @@ describe('GraphQL pact', () => {
     const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
     const interaction = pact.addInteraction();
 
+    interaction.given('a product with ID 10 exists');
+    interaction.uponReceiving('a GraphQL product request');
+
     const pluginInteraction = await graphqlInteraction(interaction, {
       schema,
       query,
       variables: { id: '10' },
       operationName: 'GetProduct',
     });
-
-    pluginInteraction.given('a product with ID 10 exists');
-    pluginInteraction.uponReceiving('a GraphQL product request');
     pluginInteraction.willRespondWith(200, (builder) => {
       builder.jsonBody({
         data: {

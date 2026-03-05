@@ -75,8 +75,11 @@ export async function graphqlInteraction<T = unknown>(
     schema_sdl: options.schema,
   };
 
+  const version = process.env.PACT_GRAPHQL_PLUGIN_VERSION ?? '0.0.0';
+
   return builder.usingPlugin({
-    pluginName: 'graphql',
+    plugin: 'graphql',
+    version,
     configuration,
   });
 }
