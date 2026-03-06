@@ -78,11 +78,20 @@ npm run test
 
 ## Distribution
 
-`pact-plugin.json` is the manifest the Pact plugin driver reads when bundling or loading the GraphQL plugin. The `version` stays at `0.0.0` in source control and is rewritten by the release workflow so packaged artifacts advertise the correct version alongside the compiled binary.
+`pact-plugin.json` is the manifest the Pact plugin driver reads when bundling or loading the GraphQL plugin. The `version` stays at `0.0.0` in source control and is rewritten by the release workflow so packaged artifacts advertise the correct version alongside the compiled binary. Run `just version` to print the resolved plugin version as derived from Cargo metadata.
 
-Run `just version` to print the resolved plugin version as derived from Cargo metadata. This helper recipe requires `cargo`, `just`, and `jq` to be available in your shell environment.
+### Bundling prerequisites
 
-When running the Just recipes on Windows, ensure a POSIX-compatible `sh` (for example via Git Bash or WSL) is available so the commands can execute as intended.
+- Rust toolchains plus the desired targets installed via `rustup target add <triple>`.
+- CLI tools: `cargo`, `just`, `jq`, `gzip`, and `shasum` (or a compatible SHA-256 utility).
+- POSIX-compatible `sh` on Windows hosts (Git Bash or WSL both work) so the recipes can execute.
+
+### Bundling commands
+
+- `just bundle target=<triple>` builds the release binary for the specified target, copies it into `dist/<triple>/pact-graphql-plugin[.exe]`, rewrites `pact-plugin.json` with the current version, and emits a gzip + `.sha256` pair named `pact-graphql-plugin-<os>-<arch>[.exe].gz` under the same directory.
+- `just bundle-all` iterates over every entry in `SUPPORTED_TARGETS` and invokes the recipe above, producing a complete `dist/` tree in one go.
+
+Each run is idempotent: rerunning a bundle overwrites the staged binary, manifest, archive, and checksum for that target.
 
 ## Repo Status
 
