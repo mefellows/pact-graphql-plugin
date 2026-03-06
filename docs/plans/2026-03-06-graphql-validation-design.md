@@ -20,51 +20,27 @@
 #### 1.1 Request capture & validation
 - Extend `configure_interaction` to persist the canonical GraphQL request payload (dedented document, sorted variables JSON, transport info) inside `GraphqlPluginConfig`.
 - Update `compare_contents` to parse both expected config and actual request body (JSON or query-string). If mismatched, return a structured mismatch (expected vs actual) so Pact surfaces it without crashing.
-- During `generate_content`, re-use the stored request payload to populate the mock response body; no changes needed.
 
 #### 1.2 Schema embedding + validation
-- When `schema_sdl` is provided, canonicalize (trim, ensure trailing newline) and compute hash as before, but also Base64-encode the text and store it directly under a new field (e.g., `schema_inline_base64`) inside `GraphqlPluginConfig`.
-- During `configure_interaction`, parse the SDL and validate the provided GraphQL document (ensure operation exists, fields are valid). Use a lightweight Rust GraphQL parser to build the AST and walk it against the SDL.
-- If parsing or validation fails, return an error so the consumer test fails immediately.
+- When `schema_sdl` is provided, canonicalize and Base64-encode the text, storing it inline alongside the hash reference.
+- Parse the SDL + query using `graphql_parser`, ensure operations/fields exist, and error out on invalid documents during `configure_interaction`.
 
 ### 2. Helper redesign
-#### 2.1 API shape
-- Export a single `graphqlInteraction` function that accepts options:
-  ```ts
-  graphqlInteraction({
-    pact,
-    description,
-    schema,
-    query,
-    variables,
-    operationName,
-    given,
-    expected,
-  })
-  ```
-  where `expected` includes response status/headers/body. The helper internally calls `pact.addInteraction(description)` and wires `withRequest`/`willRespondWith` + `executeTest`.
-- Return the promise from `executeTest` so consumers can `await graphqlInteraction(...)` in their tests without touching lower-level pact APIs.
-
-#### 2.2 Response body handling
-- Accept `expected.responseBody` as JSON (or builder callbacks for advanced matchers). For MVP, support JSON object + optional headers/status; helper translates to `builder.jsonBody` and `builder.headers`.
-- Optionally support Pact matchers (type, regex) in the JSON through `@pact-foundation/pact` matchers; helper should detect matcher types and pass them through untouched.
+- Provide a high-level API `graphqlInteraction({ pact, description, given, schema, query, variables, operationName, expected })` that creates the interaction, sets headers + plugin metadata, wires the response, and runs `executeTest`. Consumers only supply test data; helper handles Pact boilerplate.
 
 ### 3. Pact schema metadata
-- Extend `config_to_struct` to include `schema_inline_base64` so interactions carry SDL inline.
-- Update README + example test to mention the pact now contains schema data for provider drift detection.
+- Serialize inline SDL into pact metadata so provider tooling can diff schemas straight from the pact file.
 
 ## Alternatives Considered
-- **Helper partial abstraction** – only wrap the request, leaving response wiring to the user. Rejected: duplicates boilerplate, doesn’t meet the “full abstraction” request.
-- **Schema validation in JS helper** – early feedback but doesn’t cover other language clients; plugin-level validation ensures consistency across ecosystems.
-- **Client-side request assertions** – could intercept `fetch` and compare payloads before hitting pact, but plugin-level validation reduces duplication and keeps the mock server authoritative.
+- Partial helper abstraction (request only) – rejected; still too much duplication.
+- Client-side validation – insufficient for other languages; plugin validation keeps semantics central.
 
 ## Risks & Mitigations
-- **Parsing SDL + queries in Rust** – need a reliable parser (e.g., `graphql-parser` crate). Mitigation: choose a battle-tested crate, add unit tests.
-- **Backward compatibility** – existing helper usage will break once API changes. Mitigation: version helper as `0.2.0` with release notes, keep new API clearly documented.
-- **Checksum/pact size** – embedding Base64 SDL increases pact file size. Mitigation: store canonical text (trimmed, deduplicated via `schema_ref`) to minimize duplication.
+- GraphQL parsing complexity – mitigate with well-tested crates + targeted unit tests.
+- Backward compatibility – version helper as 0.2.0 and document migration; plugin remains backward compatible at the protocol level.
 
 ## Next Steps
-1. Implement plugin validation + schema embedding.
-2. Redesign helper API + update example test.
-3. Extend README/docs to cover new workflow.
-4. Update tests (Rust + JS) to cover validation and helper behavior.
+1. Implement plugin changes (canonical payload + validation).
+2. Add request comparison and mismatches.
+3. Redesign helper API, update tests/examples.
+4. Document workflow and run smoke tests.
