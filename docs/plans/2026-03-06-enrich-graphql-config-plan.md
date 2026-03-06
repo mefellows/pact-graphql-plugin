@@ -4,7 +4,7 @@
 
 **Goal:** Store canonical GraphQL request payload + inline SDL in `GraphqlPluginConfig`, validate queries against SDL, and update tests accordingly.
 
-**Architecture:** GraphqlInteractionBuilder canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. The server reuses the enriched config; tests assert the new behavior.
+**Architecture:** `GraphqlInteractionBuilder` canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. The server reuses the enriched config; tests assert the new behavior.
 
 **Tech Stack:** Rust (`graphql_parser`, `serde_json`, `base64`), pact_plugin_driver, cargo test harness.
 
