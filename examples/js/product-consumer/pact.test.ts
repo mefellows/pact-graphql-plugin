@@ -30,28 +30,43 @@ describe('GraphQL pact', () => {
       variables: { id: '10' },
       operationName: 'GetProduct',
     });
-    pluginInteraction.willRespondWith(200, (builder) => {
-      builder.jsonBody({
-        data: {
-          product: {
-            id: '10',
-            name: 'product name',
-            type: 'product series',
-          },
-        },
-      });
+    const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
+      builder.headers({ 'content-type': 'application/json' });
+      builder.pluginContents(
+        'application/json',
+        JSON.stringify({
+          query_document: query.trim(),
+          operation_name: 'GetProduct',
+          variables_json: JSON.stringify({ id: '10' }),
+          transport: 'json_body',
+          schema_sdl: schema,
+        }),
+      );
     });
 
-    await pact.executeTest(async (mockServer) => {
-      await fetch(`${mockServer.url}/graphql`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          query,
-          variables: { id: '10' },
-          operationName: 'GetProduct',
-        }),
+    await responseInteraction
+      .willRespondWith(200, (builder) => {
+        builder.headers({ 'content-type': 'application/json' });
+        builder.jsonBody({
+          data: {
+            product: {
+              id: '10',
+              name: 'product name',
+              type: 'product series',
+            },
+          },
+        });
+      })
+      .executeTest(async (mockServer) => {
+        await fetch(`${mockServer.url}/graphql`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            variables: { id: '10' },
+            operationName: 'GetProduct',
+          }),
+        });
       });
-    });
   });
 });

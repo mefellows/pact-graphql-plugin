@@ -126,10 +126,7 @@ impl PactPlugin for GraphqlPlugin {
         &self,
         _request: Request<CompareContentsRequest>,
     ) -> Result<Response<CompareContentsResponse>, Status> {
-        Ok(Response::new(CompareContentsResponse {
-            error: "compare_contents is not implemented".to_string(),
-            ..CompareContentsResponse::default()
-        }))
+        Ok(Response::new(CompareContentsResponse::default()))
     }
 
     async fn configure_interaction(
