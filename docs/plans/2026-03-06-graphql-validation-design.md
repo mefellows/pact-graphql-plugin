@@ -68,7 +68,3 @@
 2. Redesign helper API + update example test.
 3. Extend README/docs to cover new workflow.
 4. Update tests (Rust + JS) to cover validation and helper behavior.
-
----
-
-Once we agree on this design, the next step is to create a detailed implementation plan (`docs/plans/2026-03-06-graphql-validation-plan.md`) and then execute it via the subagent-driven workflow.

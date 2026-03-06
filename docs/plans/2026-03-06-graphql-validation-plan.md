@@ -19,9 +19,9 @@
 - Tests: `pact-graphql-plugin/tests/interaction_tests.rs`
 
 **Steps:**
-1. Update `GraphqlPluginConfig` to include canonical request fields (dedented `request_payload` struct) and `schema_inline_base64`.
+1. Update `GraphqlPluginConfig` to include canonical request fields (`request_payload`) and `schema_inline_base64`.
 2. Extend `GraphqlInteractionBuilder::build` to compute Base64 SDL, store request payload, and validate GraphQL document against SDL using a Rust GraphQL parser crate. Add unit tests covering success/failure paths.
-3. Ensure `GraphqlPluginConfig` serialization/deserialization includes the new fields; update `config_to_struct` + round-trip tests.
+3. Ensure serialization/deserialization includes the new fields; update `config_to_struct` + round-trip tests.
 4. Commit `feat: enrich graphql interaction config`.
 
 ### Task 2: Implement request comparison
@@ -33,8 +33,7 @@
 **Steps:**
 1. Implement helper to parse incoming HTTP body (JSON vs query string) into normalized structure (sorted fields, trimmed doc).
 2. Update `compare_contents` to load expected payload from `GraphqlPluginConfig` and compare with actual; return mismatch entries when they differ. Add integration test that submits mismatched query and asserts failure message.
-3. Update `generate_content` or `encode_body` only if necessary (should already reuse stored payload).
-4. Commit `feat: validate graphql request payloads`.
+3. Commit `feat: validate graphql request payloads`.
 
 ### Task 3: Modernize JS helper API
 
@@ -46,46 +45,46 @@
 
 **Steps:**
 1. Redesign `graphqlInteraction` to accept high-level options (`pact`, `description`, `schema`, `query`, `variables`, `operationName`, `given`, `expected`). It should internally call `pact.addInteraction()`, configure request/response, and return `executeTest` promise.
-2. Update helper implementation to dedupe query normalization, apply plugin request metadata, and set response JSON automatically. Support optional headers/status.
-3. Revise unit tests to cover new API shape; update example Pact test to use the simplified helper signature.
-4. Commit `feat: simplify graphql helper API` (JS workspace).
+2. Update helper implementation to dedupe query normalization, apply plugin request metadata, and set response JSON automatically. Support optional headers/status + matcher passthrough.
+3. Revise unit tests + example Pact test to use the simplified helper signature.
+4. Commit `feat: simplify graphql helper API`.
 
 ### Task 4: Schema validation integration tests
 
 **Files:**
-- Tests: `pact-graphql-plugin/tests/schema_validation_tests.rs` (new) + JS example test (optional)
+- Tests: `pact-graphql-plugin/tests/schema_validation_tests.rs` (new) + JS example test updates (optional)
 
 **Steps:**
-1. Add Rust integration test that loads SDL + query (valid and invalid) and ensures `configure_interaction` fails for unknown fields.
-2. Extend JS example to demonstrate failure when query drifts from schema (e.g., wrap in `await expect(graphqlInteraction(...)).rejects`), or document behavior in README.
+1. Add Rust integration test verifying invalid query fails against SDL.
+2. Extend JS example or README to demonstrate drift failure (expect helper call to reject).
 3. Commit `test: add graphql schema validation coverage`.
 
 ### Task 5: Docs + README updates
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/plans/2026-03-06-graphql-validation-design.md` (link to implementation section)
+- Modify: `docs/plans/2026-03-06-graphql-validation-design.md` (tie design to implementation)
 
 **Steps:**
-1. Document the new helper API (usage snippet) and mention that Pact files now include Base64 SDL + enforced request matching.
-2. Add a note under Distribution or JS instructions describing schema validation behavior and how to interpret mismatch errors.
+1. Document new helper API and pact metadata (inline SDL + enforced request matching).
+2. Add troubleshooting note for schema mismatch errors.
 3. Commit `docs: describe graphql validation workflow`.
 
 ### Task 6: Bundle/install smoke test
 
 **Files:**
-- n/a (just commands)
+- n/a
 
 **Steps:**
-1. Re-run `just bundle x86_64-apple-darwin && just install`.
-2. Re-run `cd examples/js/product-consumer && npm test` to confirm helper + plugin changes work end-to-end.
-3. No commit unless files changed; report results.
+1. Run `just bundle x86_64-apple-darwin && just install`.
+2. Run `cd examples/js/product-consumer && npm test` to confirm full flow.
+3. Report results (no commit unless artifacts change).
 
 ---
 
 Plan complete and saved to `docs/plans/2026-03-06-graphql-validation-plan.md`. Two execution options:
 
-1. Subagent-Driven (this session) – fresh subagent per task using @superpowers/subagent-driven-development.
-2. Parallel Session – run in a separate session with @superpowers/executing-plans.
+1. Subagent-Driven (this session)
+2. Parallel Session (separate, using executing-plans)
 
 Which approach should we use?
