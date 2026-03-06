@@ -12,39 +12,49 @@
 
 ### Task 1: Update data structures
 
-**Files:** `pact-graphql-plugin/src/interaction.rs`
+**Files:**
+- Modify: `pact-graphql-plugin/src/interaction.rs`
 
-1. Introduce `GraphqlRequestPayload` struct with canonical fields and embed it in `GraphqlPluginConfig` alongside `schema_inline_base64`.
-2. Adjust serde derives to serialize/deserialize the new structure.
+**Steps:**
+1. Introduce `GraphqlRequestPayload` struct and embed it in `GraphqlPluginConfig` while keeping existing top-level fields for compatibility.
+2. Adjust serde derives/implementations to serialize/deserialize both the legacy flat fields and the new nested payload.
 
 ### Task 2: Canonicalization helpers
 
-**Files:** `pact-graphql-plugin/src/interaction.rs`, `pact-graphql-plugin/Cargo.toml`
+**Files:**
+- Modify: `pact-graphql-plugin/src/interaction.rs`
+- Modify: `pact-graphql-plugin/Cargo.toml`
 
+**Steps:**
 1. Implement dedent logic (match JS helper), variable canonicalization via `serde_json::Value`, SDL normalization (trim + newline).
-2. Add `base64` encoding plus `graphql_parser` dependency (update Cargo.toml/lock).
+2. Add `graphql_parser` dependency (and ensure `base64` already available). Update `Cargo.lock` accordingly.
 
 ### Task 3: Validation integration
 
-**Files:** `pact-graphql-plugin/src/interaction.rs`, `pact-graphql-plugin/src/server.rs`
+**Files:**
+- Modify: `pact-graphql-plugin/src/interaction.rs`
+- Modify: `pact-graphql-plugin/src/server.rs`
 
+**Steps:**
 1. Parse SDL + query using `graphql_parser`, build type/field maps, and verify operations/fields exist.
 2. Update `GraphqlInteractionBuilder::build` to populate canonical payload + inline schema, returning errors on validation failure.
-3. Ensure `config_to_struct` serializes the new fields.
+3. Ensure `config_to_struct` serializes the new fields for pact metadata.
 
 ### Task 4: Tests
 
-**Files:** `pact-graphql-plugin/tests/interaction_tests.rs`
+**Files:**
+- Modify: `pact-graphql-plugin/tests/interaction_tests.rs`
 
-1. Add tests confirming canonical payload + inline schema on success.
-2. Add test asserting validation failure when query references unknown field.
+**Steps:**
+1. Add tests confirming canonical payload + inline schema are present on success.
+2. Add test asserting validation failure occurs when query references an unknown field.
 3. Run `cargo fmt` and `cargo test --package pact-graphql-plugin tests::interaction_tests`.
 
 ### Task 5: Commit
 
 **Files:** n/a
 
-1. Stage modified Rust files + Cargo manifests.
+1. Stage affected files (Rust sources, Cargo manifests, tests).
 2. Commit with `feat: enrich graphql interaction config`.
 
 ---
