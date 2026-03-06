@@ -1,5 +1,6 @@
 PLUGIN_VERSION := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "pact_graphql_plugin") | .version'`
 SUPPORTED_TARGETS := '["x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]'
+host-triple := `rustc -Vv | awk '/host/ {print $2}'`
 
 version:
 	@printf "%s\n" "{{PLUGIN_VERSION}}"
@@ -87,3 +88,55 @@ bundle-all:
 		just bundle target="$target"; \
 	done
 	unset IFS
+
+install:
+	@set -euo pipefail
+	for cmd in gzip jq mktemp; do \
+		if ! command -v "$$cmd" >/dev/null 2>&1; then \
+			printf >&2 "'%s' is required for just install. Please install it and retry.\n" "$$cmd"; \
+			exit 1; \
+		fi; \
+	done
+	host_target="{{host-triple}}"
+	if [ -z "$host_target" ]; then \
+		printf >&2 "unable to detect host target via rustc\n"; \
+		exit 1; \
+	fi
+	if ! rustup target list --installed | grep -Fxq "$host_target"; then \
+		printf >&2 "rustup target '%s' is not installed. Run 'rustup target add %s' first.\n" "$host_target" "$host_target"; \
+		exit 1; \
+	fi
+	label=$(just target-label target="$host_target")
+	case "$host_target" in \
+		*-pc-windows-msvc) \
+			exe_suffix=.exe \
+			;; \
+		*) \
+			exe_suffix= \
+			;; \
+		esac
+	dist_dir="dist/$host_target"
+	archive="$dist_dir/pact-graphql-plugin-$label$exe_suffix.gz"
+	manifest="$dist_dir/pact-plugin.json"
+	binary_name="pact-graphql-plugin$exe_suffix"
+	if [ ! -f "$archive" ] || [ ! -f "$manifest" ]; then \
+		printf "%s\n" "Host bundle missing; building $host_target"; \
+		just bundle target="$host_target"; \
+	fi
+	tmp_dir=$(mktemp -d)
+	cleanup() { rm -rf "$tmp_dir"; }
+	trap cleanup EXIT INT TERM
+	gzip -dc "$archive" > "$tmp_dir/$binary_name"
+	cp "$manifest" "$tmp_dir/pact-plugin.json"
+	case "$exe_suffix" in \
+		.exe) \
+			;; \
+		*) \
+			chmod +x "$tmp_dir/$binary_name"; \
+			;; \
+		esac
+	install_root="$HOME/.pact/plugins/graphql-{{PLUGIN_VERSION}}"
+	mkdir -p "$install_root"
+	cp "$tmp_dir/$binary_name" "$install_root/$binary_name"
+	cp "$tmp_dir/pact-plugin.json" "$install_root/pact-plugin.json"
+	printf "Installed GraphQL plugin for %s at %s\n" "$host_target" "$install_root"

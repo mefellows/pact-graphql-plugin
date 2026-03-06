@@ -74,7 +74,7 @@ npm install
 npm run test
 ```
 
-> Running the example requires the GraphQL plugin binary to be installed where Pact Core can find it (e.g. `$HOME/.pact/plugins`). Once available, the test will produce a pact showing a GraphQL request configured via the helper.
+> Running the example requires the GraphQL plugin binary to be discoverable by Pact Core. Run `just install` from the repo root to copy the current build into `~/.pact/plugins/graphql-<version>/` before executing the tests.
 
 ## Distribution
 
@@ -92,6 +92,12 @@ npm run test
 - `just bundle-all` iterates over every entry in `SUPPORTED_TARGETS` and invokes the recipe above, producing a complete `dist/` tree in one go.
 
 Each run is idempotent: rerunning a bundle overwrites the staged binary, manifest, archive, and checksum for that target.
+
+### Local install
+
+- `just install` detects the current host triple (via `rustc -Vv`), ensures a bundle for that triple exists (building one if necessary), extracts the gzip into a temporary directory, and copies both the binary and `pact-plugin.json` into `~/.pact/plugins/graphql-<version>/`.
+
+The recipe requires the same CLI tools listed above (`jq`, `gzip`, `mktemp`, `rustup`) plus a POSIX-compatible shell on Windows (Git Bash or WSL). After running it, Pact CLI tooling will load the GraphQL plugin from the installed directory.
 
 ## Repo Status
 
