@@ -4,61 +4,47 @@
 
 **Goal:** Store canonical GraphQL request payload + inline SDL in `GraphqlPluginConfig`, validate queries against SDL, and update tests accordingly.
 
-**Architecture:** `GraphqlInteractionBuilder` canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. The server reuses the enriched config; tests assert the new behavior.
+**Architecture:** GraphqlInteractionBuilder canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. The server reuses the enriched config; tests assert the new behavior.
 
-**Tech Stack:** Rust (`graphql_parser`, `serde_json`, `base64`), cargo test harness.
+**Tech Stack:** Rust (`graphql_parser`, `serde_json`, `base64`), pact_plugin_driver, cargo test harness.
 
 ---
 
 ### Task 1: Update data structures
 
-**Files:**
-- Modify: `pact-graphql-plugin/src/interaction.rs`
+**Files:** `pact-graphql-plugin/src/interaction.rs`
 
-**Steps:**
-1. Introduce `GraphqlRequestPayload` struct (query_document, operation_name, variables_json, transport) and embed it in `GraphqlPluginConfig` along with `schema_inline_base64`.
-2. Update serde derives to include the new fields (ensure backwards-compatible serialization if needed).
-3. Commit `chore: expand graphql config model` if you prefer to checkpoint (optional).
+1. Introduce `GraphqlRequestPayload` struct with canonical fields and embed it in `GraphqlPluginConfig` alongside `schema_inline_base64`.
+2. Adjust serde derives to serialize/deserialize the new structure.
 
 ### Task 2: Canonicalization helpers
 
-**Files:**
-- Modify: `pact-graphql-plugin/src/interaction.rs`
-- Modify: `pact-graphql-plugin/Cargo.toml` (add `graphql_parser`)
+**Files:** `pact-graphql-plugin/src/interaction.rs`, `pact-graphql-plugin/Cargo.toml`
 
-**Steps:**
-1. Implement functions for dedenting query (line-based approach), canonicalizing variables (`serde_json::Value` round-trip), and normalizing SDL (trim + trailing newline).
-2. Add Base64 encoding via `base64::engine::general_purpose::STANDARD`.
-3. Update `Cargo.toml`/`Cargo.lock` with `graphql_parser` dependency and run `cargo fetch` if needed.
+1. Implement dedent logic (match JS helper), variable canonicalization via `serde_json::Value`, SDL normalization (trim + newline).
+2. Add `base64` encoding plus `graphql_parser` dependency (update Cargo.toml/lock).
 
 ### Task 3: Validation integration
 
-**Files:**
-- Modify: `pact-graphql-plugin/src/interaction.rs`
-- Modify: `pact-graphql-plugin/src/server.rs`
+**Files:** `pact-graphql-plugin/src/interaction.rs`, `pact-graphql-plugin/src/server.rs`
 
-**Steps:**
-1. Use `graphql_parser` to parse SDL and query; build type map to validate selected fields/operations.
-2. Extend `GraphqlInteractionBuilder::build` to run validation and populate `GraphqlPluginConfig` with canonical payload + inline schema. Return `anyhow::Error` on validation failure.
-3. Update `config_to_struct` and related serialization helpers to include the new fields.
+1. Parse SDL + query using `graphql_parser`, build type/field maps, and verify operations/fields exist.
+2. Update `GraphqlInteractionBuilder::build` to populate canonical payload + inline schema, returning errors on validation failure.
+3. Ensure `config_to_struct` serializes the new fields.
 
 ### Task 4: Tests
 
-**Files:**
-- Modify: `pact-graphql-plugin/tests/interaction_tests.rs`
+**Files:** `pact-graphql-plugin/tests/interaction_tests.rs`
 
-**Steps:**
-1. Add tests verifying canonical query/variables + Base64 schema stored on success.
-2. Add failure test where query references unknown field, expect builder to return Err containing helpful message.
+1. Add tests confirming canonical payload + inline schema on success.
+2. Add test asserting validation failure when query references unknown field.
 3. Run `cargo fmt` and `cargo test --package pact-graphql-plugin tests::interaction_tests`.
 
-### Task 5: Final commit
+### Task 5: Commit
 
-**Files:**
-- n/a
+**Files:** n/a
 
-**Steps:**
-1. Stage all modified files (`interaction.rs`, `server.rs`, tests, Cargo.toml/lock`).
+1. Stage modified Rust files + Cargo manifests.
 2. Commit with `feat: enrich graphql interaction config`.
 
 ---
