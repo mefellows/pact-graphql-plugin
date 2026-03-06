@@ -80,6 +80,10 @@ npm run test
 
 `pact-plugin.json` is the manifest the Pact plugin driver reads when bundling or loading the GraphQL plugin. The `version` stays at `0.0.0` in source control and is rewritten by the release workflow so packaged artifacts advertise the correct version alongside the compiled binary.
 
+Run `just version` to print the resolved plugin version as derived from Cargo metadata. This helper recipe requires `cargo`, `just`, and `jq` to be available in your shell environment.
+
+When running the Just recipes on Windows, ensure a POSIX-compatible `sh` (for example via Git Bash or WSL) is available so the commands can execute as intended.
+
 ## Repo Status
 
 See `docs/plans/2026-03-04-graphql-plugin-design.md` and the implementation plan in `docs/plans/2026-03-04-graphql-plugin-plan.md` for the current roadmap.
