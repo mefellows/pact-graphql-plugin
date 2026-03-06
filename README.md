@@ -76,6 +76,10 @@ npm run test
 
 > Running the example requires the GraphQL plugin binary to be installed where Pact Core can find it (e.g. `$HOME/.pact/plugins`). Once available, the test will produce a pact showing a GraphQL request configured via the helper.
 
+## Distribution
+
+`pact-plugin.json` is the manifest the Pact plugin driver reads when bundling or loading the GraphQL plugin. The `version` stays at `0.0.0` in source control and is rewritten by the release workflow so packaged artifacts advertise the correct version alongside the compiled binary.
+
 ## Repo Status
 
 See `docs/plans/2026-03-04-graphql-plugin-design.md` and the implementation plan in `docs/plans/2026-03-04-graphql-plugin-plan.md` for the current roadmap.

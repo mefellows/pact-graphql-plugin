@@ -1,0 +1,29 @@
+{
+  "manifestVersion": 1,
+  "pluginInterfaceVersion": 1,
+  "name": "graphql",
+  "version": "0.0.0",
+  "description": "Pact content matcher and generator for GraphQL interactions",
+  "executableType": "exec",
+  "entryPoint": "./pact-graphql-plugin",
+  "capabilities": [
+    {
+      "type": "content-matcher",
+      "key": "graphql",
+      "entryPoint": "./pact-graphql-plugin",
+      "contentTypes": [
+        "application/json",
+        "application/graphql"
+      ]
+    },
+    {
+      "type": "content-generator",
+      "key": "graphql",
+      "entryPoint": "./pact-graphql-plugin",
+      "contentTypes": [
+        "application/json",
+        "application/graphql"
+      ]
+    }
+  ]
+}
