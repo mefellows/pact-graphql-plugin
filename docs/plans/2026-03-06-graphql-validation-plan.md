@@ -10,17 +10,18 @@
 
 ---
 
-### Task 1: Enhance plugin interaction config
+### Task 1: Enrich plugin interaction config
 
 **Files:**
 - Modify: `pact-graphql-plugin/src/interaction.rs`
+- Modify: `pact-graphql-plugin/src/encoder.rs` (if helpers needed)
 - Modify: `pact-graphql-plugin/src/server.rs`
 - Tests: `pact-graphql-plugin/tests/interaction_tests.rs`
 
 **Steps:**
 1. Update `GraphqlPluginConfig` to include canonical request fields (dedented `request_payload` struct) and `schema_inline_base64`.
 2. Extend `GraphqlInteractionBuilder::build` to compute Base64 SDL, store request payload, and validate GraphQL document against SDL using a Rust GraphQL parser crate. Add unit tests covering success/failure paths.
-3. Ensure `config_to_struct` serializes the new fields; add round-trip test confirming pact metadata includes inline schema.
+3. Ensure `GraphqlPluginConfig` serialization/deserialization includes the new fields; update `config_to_struct` + round-trip tests.
 4. Commit `feat: enrich graphql interaction config`.
 
 ### Task 2: Implement request comparison
