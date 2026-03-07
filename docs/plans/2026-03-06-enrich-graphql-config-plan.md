@@ -4,7 +4,7 @@
 
 **Goal:** Store canonical GraphQL request payload + inline SDL in `GraphqlPluginConfig`, validate queries against SDL, and update tests accordingly.
 
-**Architecture:** `GraphqlInteractionBuilder` canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. The server reuses the enriched config; tests assert the new behavior.
+**Architecture:** A dedicated `graphql_payload` module canonicalizes query/document/variables, Base64-encodes SDL, and validates using `graphql_parser`. `GraphqlInteractionBuilder` delegates to the module and embeds the results into `GraphqlPluginConfig`; the server reuses the enriched config and tests assert the new behavior.
 
 **Tech Stack:** Rust (`graphql_parser`, `serde_json`, `base64`), pact_plugin_driver, cargo test harness.
 
@@ -16,8 +16,8 @@
 - Modify: `pact-graphql-plugin/src/interaction.rs`
 
 **Steps:**
-1. Introduce `GraphqlRequestPayload` struct and embed it in `GraphqlPluginConfig` while keeping existing top-level fields for compatibility.
-2. Adjust serde derives/implementations to serialize/deserialize both the legacy flat fields and the new nested payload.
+1. Introduce `pact-graphql-plugin/src/graphql_payload.rs` (or module) containing `GraphqlRequestPayload` plus inline SDL metadata structs, and embed the nested payload in `GraphqlPluginConfig` while keeping existing top-level fields for compatibility.
+2. Adjust serde derives/implementations to serialize/deserialize both the legacy flat fields and the new nested payload, ensuring the builder/server consumers remain unchanged.
 
 ### Task 2: Canonicalization helpers
 

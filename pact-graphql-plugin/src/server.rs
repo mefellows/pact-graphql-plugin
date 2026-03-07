@@ -278,21 +278,130 @@ fn to_status(err: anyhow::Error) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graphql_payload::{GraphqlInlineSchema, GraphqlRequestPayload};
+    use serde_json::json;
 
     #[test]
     fn config_roundtrip() {
+        let inline_schema = Some(GraphqlInlineSchema {
+            base64_sdl: Some("dGVzdA==".into()),
+        });
         let config = GraphqlPluginConfig {
             query_document: "query".into(),
             operation_name: Some("op".into()),
             variables_json: Some("{}".into()),
             transport: Transport::JsonBody,
             schema_ref: None,
-            schema_inline_base64: None,
+            schema_inline_base64: inline_schema
+                .as_ref()
+                .and_then(|schema| schema.base64_sdl.clone()),
+            inline_schema: inline_schema.clone(),
+            request: GraphqlRequestPayload {
+                query_document: "query".into(),
+                operation_name: Some("op".into()),
+                variables_json: Some("{}".into()),
+                transport: Transport::JsonBody,
+            },
         };
         let struct_value = config_to_struct(&config).unwrap();
         let value = proto_struct_to_json(&struct_value);
         let decoded: GraphqlPluginConfig = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.query_document, "query");
         assert_eq!(decoded.transport, Transport::JsonBody);
+        assert_eq!(decoded.request, config.request);
+        assert_eq!(decoded.inline_schema, config.inline_schema);
+        assert_eq!(decoded.schema_inline_base64, config.schema_inline_base64);
+    }
+
+    #[test]
+    fn deserializes_request_from_flat_fields() {
+        let value = json!({
+            "query_document": "query",
+            "operation_name": "MyOp",
+            "variables_json": "{\"a\":1}",
+            "transport": "json_body",
+            "schema_ref": null,
+            "schema_inline_base64": null
+        });
+        let config: GraphqlPluginConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.request.query_document, "query");
+        assert_eq!(config.request.operation_name.as_deref(), Some("MyOp"));
+        assert_eq!(config.request.variables_json.as_deref(), Some("{\"a\":1}"));
+        assert_eq!(config.request.transport, Transport::JsonBody);
+    }
+
+    #[test]
+    fn synthesizes_inline_schema_from_legacy_field() {
+        let base64 = "dGVzdA==";
+        let value = json!({
+            "query_document": "query",
+            "operation_name": null,
+            "variables_json": null,
+            "transport": "json_body",
+            "schema_inline_base64": base64
+        });
+        let config: GraphqlPluginConfig = serde_json::from_value(value).unwrap();
+        let synthesized = config
+            .inline_schema
+            .and_then(|schema| schema.base64_sdl)
+            .expect("inline schema synthesized");
+        assert_eq!(synthesized, base64);
+    }
+
+    #[test]
+    fn serializes_inline_schema_back_to_legacy_field() {
+        let config = GraphqlPluginConfig {
+            query_document: "query".into(),
+            operation_name: None,
+            variables_json: None,
+            transport: Transport::JsonBody,
+            schema_ref: None,
+            schema_inline_base64: None,
+            inline_schema: Some(GraphqlInlineSchema {
+                base64_sdl: Some("dGVzdA==".into()),
+            }),
+            request: GraphqlRequestPayload {
+                query_document: "query".into(),
+                operation_name: None,
+                variables_json: None,
+                transport: Transport::JsonBody,
+            },
+        };
+        let json_value = serde_json::to_value(&config).unwrap();
+        assert_eq!(
+            json_value
+                .get("schema_inline_base64")
+                .and_then(|v| v.as_str()),
+            Some("dGVzdA==")
+        );
+    }
+
+    #[test]
+    fn deserializes_from_nested_payload_only() {
+        let value = json!({
+            "request": {
+                "query_document": "query Products",
+                "operation_name": "Op",
+                "variables_json": "{\"a\":1}",
+                "transport": "query_string"
+            },
+            "inline_schema": {
+                "base64_sdl": "dGVzdA=="
+            }
+        });
+        let config: GraphqlPluginConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(config.query_document, "query Products");
+        assert_eq!(config.operation_name.as_deref(), Some("Op"));
+        assert_eq!(config.variables_json.as_deref(), Some("{\"a\":1}"));
+        assert_eq!(config.transport, Transport::QueryString);
+        assert_eq!(
+            config
+                .inline_schema
+                .as_ref()
+                .and_then(|schema| schema.base64_sdl.as_deref()),
+            Some("dGVzdA==")
+        );
+        assert_eq!(config.schema_inline_base64.as_deref(), Some("dGVzdA=="));
+        assert_eq!(config.request.transport, Transport::QueryString);
     }
 }

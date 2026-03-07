@@ -12,10 +12,10 @@
 
 ## Proposed Changes
 
-### Data Structures
-- Introduce `GraphqlRequestPayload { query_document, operation_name, variables_json, transport }`.
-- Update `GraphqlPluginConfig` to include `request: GraphqlRequestPayload`, `schema_ref`, and `schema_inline_base64` (Base64 string of canonical SDL).
-- Keep `GraphqlPluginRequest` as the wire-facing input struct; `config_to_struct` reuses serde serialization so Pact Core sees the new fields automatically.
+### Data Structures & Ownership
+- Introduce a new `graphql_payload` module that owns `GraphqlRequestPayload { query_document, operation_name, variables_json, transport }` plus helper structs for canonical SDL metadata.
+- `GraphqlInteractionBuilder` keeps receiving legacy flat fields, but calls into the module to obtain a canonical payload + inline SDL snapshot, which it then embeds back into `GraphqlPluginConfig` (keeping existing top-level fields for compatibility).
+- Keep `GraphqlPluginRequest` as the wire-facing input struct; `config_to_struct` continues to serialize both legacy and nested structures using the derived serde implementations so Pact Core sees the enriched config automatically.
 
 ### Canonicalization
 - **Query:** Split lines, remove leading/trailing blank lines, compute minimum indentation among non-empty lines, and strip that indentation to mimic helper behaviour.
