@@ -1,9 +1,196 @@
-type Query {
-  product(id: ID!): Product
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
 }
 
-type Product {
+interface Node {
+  id: ID!
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+enum CurrencyCode {
+  USD
+  EUR
+  GBP
+  AUD
+}
+
+enum OrderStatus {
+  PLACED
+  PAID
+  FULFILLED
+  SHIPPED
+  CANCELLED
+}
+
+enum ShipmentStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+}
+
+enum ReviewRating {
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
+}
+
+union SearchResult = Product | Category | Review
+
+type Query {
+  product(id: ID!): Product
+  products(status: ProductStatus, search: String, first: Int, after: String): [Product!]!
+  search(text: String!): [SearchResult!]!
+  order(id: ID!): Order
+}
+
+type Mutation {
+  addToCart(input: AddToCartInput!): OrderLine!
+  placeOrder(input: OrderInput!): Order!
+  submitReview(input: ReviewInput!): Review!
+}
+
+type Subscription {
+  inventoryChanged(variantId: ID!): Inventory!
+  orderStatusChanged(orderId: ID!): Order!
+}
+
+type Product implements Node {
+  id: ID!
+  sku: String!
+  name: String!
+  description: String
+  status: ProductStatus!
+  category: Category
+  tags: [String!]!
+  variants: [Variant!]!
+  reviews: [Review!]!
+}
+
+type Variant implements Node {
+  id: ID!
+  sku: String!
+  name: String!
+  price: Price!
+  inventory: Inventory!
+}
+
+type Category implements Node {
   id: ID!
   name: String!
-  type: String!
+  slug: String!
+  parent: Category
+}
+
+type Inventory {
+  quantity: Int!
+  updatedAt: String!
+}
+
+type Price {
+  list: Money!
+  sale: Money
+}
+
+type Money {
+  amount: Float!
+  currency: CurrencyCode!
+}
+
+type Review implements Node {
+  id: ID!
+  rating: ReviewRating!
+  title: String
+  body: String
+  author: Customer!
+  createdAt: String!
+}
+
+type Customer implements Node {
+  id: ID!
+  email: String!
+  name: String!
+  defaultShippingAddress: Address
+  addresses: [Address!]!
+}
+
+type Order implements Node {
+  id: ID!
+  status: OrderStatus!
+  customer: Customer!
+  lines: [OrderLine!]!
+  total: Money!
+  shipments: [Shipment!]!
+  placedAt: String!
+}
+
+type OrderLine {
+  product: Product!
+  variant: Variant!
+  quantity: Int!
+  price: Price!
+}
+
+type Shipment implements Node {
+  id: ID!
+  status: ShipmentStatus!
+  trackingNumber: String
+  carrier: String
+  address: Address!
+  shippedAt: String
+  deliveredAt: String
+}
+
+type Address {
+  line1: String!
+  line2: String
+  city: String!
+  state: String!
+  postalCode: String!
+  country: String!
+}
+
+input AddToCartInput {
+  productId: ID!
+  variantId: ID
+  quantity: Int!
+}
+
+input OrderInput {
+  customerId: ID!
+  lines: [OrderLineInput!]!
+  shippingAddress: AddressInput!
+  paymentToken: String
+}
+
+input OrderLineInput {
+  productId: ID!
+  variantId: ID
+  quantity: Int!
+}
+
+input AddressInput {
+  line1: String!
+  line2: String
+  city: String!
+  state: String!
+  postalCode: String!
+  country: String!
+}
+
+input ReviewInput {
+  productId: ID!
+  rating: ReviewRating!
+  title: String
+  body: String
 }
