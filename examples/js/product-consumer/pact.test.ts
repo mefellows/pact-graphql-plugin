@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { PactV4 } from '@pact-foundation/pact';
 import { graphqlInteraction } from 'pact-graphql-helper';
 
@@ -16,9 +16,18 @@ const query = `
   }
 `;
 
+const invalidQuery = `
+  query GetProduct($id: ID!) {
+    product(id: $id) {
+      id
+      unknownField
+    }
+  }
+`;
+
 describe('GraphQL pact', () => {
   it('configures an interaction via the plugin', async () => {
-    const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+    const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider', logLevel: 'debug' });
     const interaction = pact.addInteraction();
 
     interaction.given('a product with ID 10 exists');
@@ -31,9 +40,9 @@ describe('GraphQL pact', () => {
       operationName: 'GetProduct',
     });
     const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-      builder.headers({ 'content-type': 'application/json' });
+      builder.headers({ 'content-type': 'application/graphql' });
       builder.pluginContents(
-        'application/json',
+        'application/graphql',
         JSON.stringify({
           query_document: query.trim(),
           operation_name: 'GetProduct',
@@ -44,29 +53,32 @@ describe('GraphQL pact', () => {
       );
     });
 
-    await responseInteraction
-      .willRespondWith(200, (builder) => {
-        builder.headers({ 'content-type': 'application/json' });
-        builder.jsonBody({
-          data: {
-            product: {
-              id: '10',
-              name: 'product name',
-              type: 'product series',
+    await expect(
+      responseInteraction
+        .willRespondWith(200, (builder) => {
+          builder.headers({ 'content-type': 'application/graphql' });
+          builder.jsonBody({
+            data: {
+              product: {
+                id: '10',
+                name: 'product name',
+                type: 'product series',
+              },
             },
-          },
-        });
-      })
-      .executeTest(async (mockServer) => {
-        await fetch(`${mockServer.url}/graphql`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            query,
+          });
+        })
+        .executeTest(async (mockServer) => {
+          const payload = {
+            query: invalidQuery.trim(),
             variables: { id: '10' },
             operationName: 'GetProduct',
-          }),
-        });
-      });
+          };
+          await fetch(`${mockServer.url}/graphql`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/graphql' },
+            body: JSON.stringify(payload),
+          });
+        }),
+    ).rejects.toThrow(/Request did not match|GraphQL query validation failed|GraphQL query document differs/);
   });
 });

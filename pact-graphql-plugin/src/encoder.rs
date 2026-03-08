@@ -1,6 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::form_urlencoded;
 use urlencoding::encode;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +71,17 @@ impl RequestEncoder {
         }
     }
 
+    pub fn decode(
+        body: &[u8],
+        _content_type: &str,
+        expected_transport: &Transport,
+    ) -> Result<GraphqlRequest> {
+        match expected_transport {
+            Transport::JsonBody => decode_json_body(body),
+            Transport::QueryString => decode_query_string(body),
+        }
+    }
+
     fn encode_json(request: &GraphqlRequest) -> Result<EncodedRequest> {
         let mut payload = serde_json::Map::new();
         payload.insert(
@@ -129,4 +141,93 @@ fn percent_encode_form_value(value: &str) -> String {
 
 fn parse_variables_json(raw: &str) -> Result<Value> {
     serde_json::from_str(raw).with_context(|| "variables_json must be valid JSON".to_string())
+}
+
+fn decode_json_body(body: &[u8]) -> Result<GraphqlRequest> {
+    #[derive(Deserialize)]
+    struct RawJsonBody {
+        query: String,
+        #[serde(rename = "operationName")]
+        operation_name: Option<String>,
+        variables: Option<Value>,
+    }
+
+    let parsed: RawJsonBody = serde_json::from_slice(body)
+        .with_context(|| "failed to decode GraphQL JSON body".to_string())?;
+
+    let variables_json = match parsed.variables {
+        Some(Value::Null) | None => None,
+        Some(value) => Some(serde_json::to_string(&value)?),
+    };
+
+    Ok(GraphqlRequest {
+        query_document: parsed.query,
+        operation_name: parsed.operation_name.filter(|s| !s.trim().is_empty()),
+        variables_json,
+        transport: Transport::JsonBody,
+    })
+}
+
+fn decode_query_string(body: &[u8]) -> Result<GraphqlRequest> {
+    let mut query = None;
+    let mut operation_name = None;
+    let mut variables = None;
+
+    for (key, value) in form_urlencoded::parse(body) {
+        match key.as_ref() {
+            "query" => query = Some(value.into_owned()),
+            "operationName" => operation_name = Some(value.into_owned()),
+            "variables" => variables = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+
+    let query_document = query
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| anyhow!("GraphQL query string body missing `query` parameter"))?;
+
+    Ok(GraphqlRequest {
+        query_document,
+        operation_name: operation_name.filter(|s| !s.is_empty()),
+        variables_json: variables.filter(|s| !s.is_empty()),
+        transport: Transport::QueryString,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_json_body_roundtrip() {
+        let request = GraphqlRequest::json(
+            "query Products { products { id } }",
+            Some("GetProducts".into()),
+            Some("{\"size\":10}".into()),
+        );
+        let encoded = RequestEncoder::encode(&request).expect("encode json");
+        let body = encoded.body.expect("encoded json body");
+        let decoded =
+            RequestEncoder::decode(body.as_bytes(), "application/json", &Transport::JsonBody)
+                .expect("decode json");
+        assert_eq!(decoded, request);
+    }
+
+    #[test]
+    fn decode_query_string_roundtrip() {
+        let request = GraphqlRequest::query_string(
+            "query Products { products { id } }",
+            None,
+            Some("{\"size\":10}".into()),
+        );
+        let encoded = RequestEncoder::encode(&request).expect("encode query string");
+        let query_string = encoded.query_string.expect("encoded query string");
+        let decoded = RequestEncoder::decode(
+            query_string.as_bytes(),
+            "application/x-www-form-urlencoded",
+            &Transport::QueryString,
+        )
+        .expect("decode query string");
+        assert_eq!(decoded, request);
+    }
 }

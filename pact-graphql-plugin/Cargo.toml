@@ -4,21 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pact_plugin_driver = { version = "0.4", package = "pact-plugin-driver" }
+pact_plugin_driver = { version = "0.7.5", package = "pact-plugin-driver" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "1"
 urlencoding = "2"
+url = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
 anyhow = "1"
 sha2 = "0.10"
 base64 = "0.22"
 graphql-parser = "0.4"
-tonic = { version = "0.9", features = ["transport"] }
+tonic = { version = "0.13.1", features = ["transport"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 uuid = { version = "1", features = ["v4"] }
-prost-types = "0.11.9"
+prost-types = "0.13.5"
 
 [dev-dependencies]
 pretty_assertions = "1"

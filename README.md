@@ -54,7 +54,7 @@ pluginInteraction.willRespondWith(200, (builder) => {
 await pact.executeTest(async (mockServer) => {
   await fetch(`${mockServer.url}/graphql`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/graphql' },
     body: JSON.stringify({
       query,
       variables: { id: '10' },

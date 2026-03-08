@@ -28,13 +28,13 @@ fn make_contents_config(req: &GraphqlPluginRequest) -> ConfigureInteractionReque
     }
 
     ConfigureInteractionRequest {
-        content_type: "application/json".to_string(),
+        content_type: "application/graphql".to_string(),
         contents_config: Some(to_proto_struct(&map)),
     }
 }
 
 fn expected_graphql_body() -> &'static str {
-    r#"{"query":"query { ping }","operationName":"PingQuery","variables":{"id":1}}"#
+    r#"{"query":"query PingQuery { ping }","operationName":"PingQuery","variables":{"id":1}}"#
 }
 
 #[tokio::test]
@@ -42,7 +42,7 @@ async fn configure_and_generate_json_body() {
     let (_dir, plugin) = temp_plugin();
 
     let req = GraphqlPluginRequest {
-        query_document: "query { ping }".into(),
+        query_document: "query PingQuery { ping }".into(),
         operation_name: Some("PingQuery".into()),
         variables_json: Some(r#"{"id":1}"#.into()),
         transport: pact_graphql_plugin::encoder::Transport::JsonBody,
@@ -59,7 +59,7 @@ async fn configure_and_generate_json_body() {
     assert!(response.error.is_empty());
     let interaction = response.interaction.first().expect("interaction");
     let body = interaction.contents.as_ref().expect("body");
-    assert_eq!(body.content_type, "application/json");
+    assert_eq!(body.content_type, "application/graphql");
     let content = String::from_utf8(body.content.clone().unwrap()).unwrap();
     assert_eq!(content, expected_graphql_body());
 
