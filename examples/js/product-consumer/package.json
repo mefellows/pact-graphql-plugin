@@ -4,15 +4,21 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify": "ts-node ./verify-provider.ts"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
+    "@apollo/server": "^4.12.2",
     "@pact-foundation/pact": "^16.2.0",
     "@types/node": "^25.3.3",
+    "@types/express": "^4.17.22",
+    "@types/cors": "^2.8.19",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
     "graphql": "^16.11.0",
     "pact-graphql-helper": "file:../../../js/pact-graphql-helper",
     "ts-node": "^10.9.2",
