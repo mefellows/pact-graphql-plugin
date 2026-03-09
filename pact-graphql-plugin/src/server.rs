@@ -37,6 +37,7 @@ const DEFAULT_SCHEMA_DIR: &str = ".pact-graphql-plugin/schemas";
 const PLUGIN_NAME: &str = "graphql";
 const GRAPHQL_JSON_CONTENT_TYPE: &str = "application/graphql";
 const GRAPHQL_QUERY_CONTENT_TYPE: &str = "application/graphql";
+const GRAPHQL_VALIDATION_MISMATCH: &str = "GraphQL query validation failed";
 
 pub struct GraphqlPlugin {
     builder: GraphqlInteractionBuilder,
@@ -179,14 +180,26 @@ impl PactPlugin for GraphqlPlugin {
             has_inline_schema = config.inline_schema.is_some(),
             "compare_contents: canonicalising actual request"
         );
-        let actual = CanonicalGraphqlRequest::from_http_request(
+        let actual = match CanonicalGraphqlRequest::from_http_request(
             &actual_bytes,
             &content_type,
             config.transport.clone(),
             schema_indicator.as_deref(),
             registry.as_ref(),
-        )
-        .map_err(to_status)?;
+        ) {
+            Ok(actual) => actual,
+            Err(err) => {
+                if is_validation_error(&err) {
+                    let mismatch = validation_mismatch_from_error(
+                        &err,
+                        &expected.payload.query_document,
+                    );
+                    let response = build_compare_contents_response(vec![mismatch]);
+                    return Ok(Response::new(response));
+                }
+                return Err(to_status(err));
+            }
+        };
 
         let mismatches = expected.diff(&actual);
         debug!(
@@ -304,14 +317,26 @@ impl PactPlugin for GraphqlPlugin {
             content_type = %content_type,
             "verify_interaction: canonicalising provider payload"
         );
-        let actual = CanonicalGraphqlRequest::from_http_request(
+        let actual = match CanonicalGraphqlRequest::from_http_request(
             &bytes,
             &content_type,
             config.transport.clone(),
             schema_indicator.as_deref(),
             registry.as_ref(),
-        )
-        .map_err(to_status)?;
+        ) {
+            Ok(actual) => actual,
+            Err(err) => {
+                if is_validation_error(&err) {
+                    let mismatch = validation_mismatch_from_error(
+                        &err,
+                        &expected.payload.query_document,
+                    );
+                    let response = build_verify_interaction_response(vec![mismatch]);
+                    return Ok(Response::new(response));
+                }
+                return Err(to_status(err));
+            }
+        };
 
         let mismatches = expected.diff(&actual);
         debug!(
@@ -537,7 +562,7 @@ fn content_mismatch_from_request(mismatch: RequestMismatch) -> ContentMismatch {
         actual: Some(mismatch.actual.into_bytes()),
         mismatch: mismatch.description,
         path: mismatch.path,
-        diff: String::new(),
+        diff: mismatch.diff,
         mismatch_type: "body".to_string(),
     }
 }
@@ -566,6 +591,26 @@ fn write_log_marker(_message: &str) {}
 
 fn to_status(err: anyhow::Error) -> Status {
     Status::invalid_argument(err.to_string())
+}
+
+fn is_validation_error(err: &anyhow::Error) -> bool {
+    err.chain()
+        .any(|cause| cause.to_string().contains(GRAPHQL_VALIDATION_MISMATCH))
+}
+
+fn validation_mismatch_from_error(err: &anyhow::Error, expected_query: &str) -> RequestMismatch {
+    let diff = err
+        .chain()
+        .map(|cause| cause.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    RequestMismatch {
+        path: "/payload/query_document".to_string(),
+        expected: expected_query.to_string(),
+        actual: String::new(),
+        description: GRAPHQL_VALIDATION_MISMATCH.to_string(),
+        diff,
+    }
 }
 
 #[cfg(test)]
@@ -760,6 +805,44 @@ mod tests {
     }
 
     #[test]
+    fn compare_contents_validation_mismatch() {
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tmp = tempdir().unwrap();
+            let registry = SchemaRegistry::new(tmp.path()).unwrap();
+            let plugin = GraphqlPlugin::with_registry(registry);
+            let config = sample_plugin_config();
+            let actual_request = GraphqlRequest::json(
+                "query Products { products { id bogus } }",
+                config.request.operation_name.clone(),
+                config.request.variables_json.clone(),
+            );
+            let compare_request = build_compare_request(&config, &actual_request);
+
+            let response = plugin
+                .compare_contents(Request::new(compare_request))
+                .await
+                .expect("compare contents")
+                .into_inner();
+
+            assert_eq!(response.results.len(), 1);
+            let mismatches = response.results.get("$").expect("mismatch entries");
+            assert_eq!(mismatches.mismatches.len(), 1);
+            let mismatch = &mismatches.mismatches[0];
+            assert_eq!(mismatch.path, "/payload/query_document");
+            assert_eq!(mismatch.mismatch, "GraphQL query validation failed");
+            assert!(
+                mismatch.diff.contains("GraphQL query validation failed"),
+                "expected validation failure to be in diff"
+            );
+            assert!(
+                mismatch.diff.contains("does not exist on type"),
+                "expected field error to be in diff"
+            );
+        });
+    }
+
+    #[test]
     fn prepare_interaction_for_verification_returns_config() {
         let runtime = Runtime::new().unwrap();
         runtime.block_on(async {
@@ -903,6 +986,71 @@ mod tests {
             };
             assert_eq!(mismatch.path, "/payload/query_document");
             assert_eq!(mismatch.mismatch, "GraphQL query document differs");
+        });
+    }
+
+    #[test]
+    fn verify_interaction_invalid_query() {
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tmp = tempdir().unwrap();
+            let registry = SchemaRegistry::new(tmp.path()).unwrap();
+            let plugin = GraphqlPlugin::with_registry(registry);
+            let config = sample_plugin_config();
+            let interaction_key = "verify-invalid";
+            let pact_json = pact_with_config(&config, interaction_key);
+
+            let prepare_request = VerificationPreparationRequest {
+                pact: pact_json.clone(),
+                interaction_key: interaction_key.to_string(),
+                config: None,
+            };
+            let prepared = plugin
+                .prepare_interaction_for_verification(Request::new(prepare_request))
+                .await
+                .expect("prepare interaction")
+                .into_inner();
+            let mut interaction_data = match prepared.response.expect("response") {
+                proto::verification_preparation_response::Response::InteractionData(data) => data,
+                proto::verification_preparation_response::Response::Error(err) => {
+                    panic!("unexpected error: {}", err)
+                }
+            };
+
+            let mutated_request = GraphqlRequest::json(
+                "query Products { products { missingField } }",
+                config.request.operation_name.clone(),
+                config.request.variables_json.clone(),
+            );
+            interaction_data.body = Some(actual_body_from_request(&mutated_request));
+
+            let verify_request = build_verify_request(interaction_key, pact_json, interaction_data);
+
+            let response = plugin
+                .verify_interaction(Request::new(verify_request))
+                .await
+                .expect("verify interaction")
+                .into_inner();
+
+            let result = match response.response.expect("response") {
+                proto::verify_interaction_response::Response::Result(result) => result,
+                proto::verify_interaction_response::Response::Error(err) => {
+                    panic!("unexpected error: {}", err)
+                }
+            };
+
+            assert!(!result.success, "verification should fail");
+            assert_eq!(result.mismatches.len(), 1);
+            let mismatch = match &result.mismatches[0].result {
+                Some(proto::verification_result_item::Result::Mismatch(m)) => m,
+                _ => panic!("expected mismatch result"),
+            };
+            assert_eq!(mismatch.path, "/payload/query_document");
+            assert_eq!(mismatch.mismatch, "GraphQL query validation failed");
+            assert!(
+                mismatch.diff.contains("GraphQL query validation failed"),
+                "expected validation failure to be in diff"
+            );
         });
     }
 

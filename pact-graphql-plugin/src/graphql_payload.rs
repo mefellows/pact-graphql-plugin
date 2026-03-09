@@ -53,6 +53,7 @@ pub struct RequestMismatch {
     pub expected: String,
     pub actual: String,
     pub description: String,
+    pub diff: String,
 }
 
 impl RequestMismatch {
@@ -62,6 +63,7 @@ impl RequestMismatch {
             expected,
             actual,
             description: description.to_string(),
+            diff: String::new(),
         }
     }
 }
