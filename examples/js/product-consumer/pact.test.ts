@@ -448,7 +448,7 @@ describe('GraphQL pact', () => {
 
   describe('response not in schema', () => {
     it('rejects responses with unknown fields', async () => {
-      const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+      const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider-negative' });
       const interaction = pact.addInteraction();
 
       interaction.given('a product with ID 10 exists');
