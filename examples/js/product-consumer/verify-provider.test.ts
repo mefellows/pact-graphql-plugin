@@ -44,12 +44,7 @@ describe('GraphQL provider verification', () => {
     const httpVerifier = new Verifier({
       provider: 'product-provider',
       providerBaseUrl: server.url,
-      pactUrls: [httpPactPath],
-    });
-
-    const messagePact = new MessageProviderPact({
-      provider: 'product-provider',
-      pactUrls: [messagePactPath],
+      pactUrls: [httpPactPath, messagePactPath],
       messageProviders: {
         'a GraphQL subscription event': async () =>
           buildInventoryChangedEvent('var-1'),
@@ -57,6 +52,5 @@ describe('GraphQL provider verification', () => {
     });
 
     await httpVerifier.verifyProvider();
-    await messagePact.verify();
   });
 });
