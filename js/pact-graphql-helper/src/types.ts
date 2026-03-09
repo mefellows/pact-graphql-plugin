@@ -26,15 +26,35 @@ export interface PluginCapableInteractionBuilder<T = unknown> {
   usingPlugin(options: PluginInvocationOptions): Promise<T> | T;
 }
 
-export interface GraphqlMessageInteractionBuilder<T = unknown>
-  extends PluginCapableInteractionBuilder<T> {
-  pluginContents(contentType: string, contents: string): void;
-  withContents(contents: unknown): T;
-  withContents(contentType: string, contents: unknown): T;
+export interface GraphqlAsyncMessageBuilder {
+  withJSONContent(content: unknown): GraphqlAsyncMessageBuilder;
+}
+
+export interface GraphqlAsyncMessageWithContent<T = unknown> {
+  executeTest(handler: (message: { contents: { content: unknown } }) => Promise<T>):
+    | Promise<T>
+    | Promise<T | undefined>;
+}
+
+export interface GraphqlAsyncMessageWithPluginContents<T = unknown> {
+  executeTest(handler: (message: { contents: { content: unknown } }) => Promise<T>):
+    | Promise<T>
+    | Promise<T | undefined>;
+}
+
+export interface GraphqlAsyncMessageWithPlugin<T = unknown> {
+  expectsToReceive(description: string): GraphqlAsyncMessageWithPlugin<T>;
+  withPluginContents(contents: string, contentType: string): GraphqlAsyncMessageWithPluginContents<T>;
+}
+
+export interface GraphqlUnconfiguredAsyncMessage<T = unknown> {
+  expectsToReceive(description: string, builder: (builder: GraphqlAsyncMessageBuilder) => void):
+    GraphqlAsyncMessageWithContent<T>;
+  usingPlugin(options: PluginInvocationOptions): GraphqlAsyncMessageWithPlugin<T>;
 }
 
 export interface GraphqlMessagePactBuilder<T = unknown> {
-  addAsyncMessage(): GraphqlMessageInteractionBuilder<T>;
+  addAsynchronousInteraction(): GraphqlUnconfiguredAsyncMessage<T>;
 }
 
 export interface GraphqlHttpRequestBuilder {

@@ -1,6 +1,7 @@
 import type {
   GraphqlHttpInteractionBuilder,
   GraphqlHttpRequestBuilder,
+  GraphqlAsyncMessageWithPluginContents,
   GraphqlMessageOptions,
   GraphqlMessagePactBuilder,
   GraphqlRequestOptions,
@@ -138,7 +139,7 @@ export async function graphqlHttpInteraction<T = unknown>(
 export async function graphqlMessageInteraction<T = unknown>(
   pact: GraphqlMessagePactBuilder<T>,
   options: GraphqlMessageOptions,
-): Promise<T> {
+): Promise<GraphqlAsyncMessageWithPluginContents<T>> {
   const configuration = buildGraphqlConfiguration({
     schema: options.schema,
     query: options.subscription,
@@ -157,16 +158,29 @@ export async function graphqlMessageInteraction<T = unknown>(
     envelope.variables = envelopeVariables;
   }
 
-  const interaction = pact.addAsyncMessage();
-  interaction.pluginContents('application/graphql', JSON.stringify(configuration));
-  return interaction.withContents('application/json', envelope);
+  const interaction = pact.addAsynchronousInteraction();
+  const pluginInteraction = interaction.usingPlugin({
+    plugin: 'graphql',
+    version: process.env.PACT_GRAPHQL_PLUGIN_VERSION ?? '0.0.0',
+    configuration,
+  });
+  const pluginContents = pluginInteraction.withPluginContents(
+    JSON.stringify(configuration),
+    'application/graphql',
+  );
+
+  interaction.expectsToReceive('a GraphQL subscription event', (builder) => {
+    builder.withJSONContent(envelope);
+  });
+
+  return pluginContents;
 }
 
 export type {
   GraphqlHttpInteractionBuilder,
-  GraphqlMessageInteractionBuilder,
   GraphqlMessageOptions,
   GraphqlMessagePactBuilder,
+  GraphqlAsyncMessageWithPluginContents,
   GraphqlRequestOptions,
   GraphqlTransport,
   PluginCapableInteractionBuilder,

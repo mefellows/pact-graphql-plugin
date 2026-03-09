@@ -6,27 +6,42 @@ function createFakeMessagePact() {
   const calls: any[] = [];
   return {
     calls,
-    addAsyncMessage: () => {
+    addAsynchronousInteraction: () => {
       const message: Record<string, any> = {
         contents: undefined,
         pluginContents: undefined,
       };
-      const interaction = {
-        pluginContents: (contentType: string, contents: string) => {
-          message.pluginContents = { contentType, contents };
+
+      const unconfigured = {
+        expectsToReceive: (
+          description: string,
+          builder: (msgBuilder: { withJSONContent: (body: unknown) => void }) => void,
+        ) => {
+          message.description = description;
+          builder({
+            withJSONContent: (body: unknown) => {
+              message.contents = { content: body };
+            },
+          });
+          return { executeTest: async () => message };
         },
-        withContents: (contentTypeOrContents: unknown, contents?: unknown) => {
-          if (contents === undefined) {
-            message.contents = contentTypeOrContents;
-          } else {
-            message.contents = contents;
-            message.contentType = contentTypeOrContents;
-          }
-          return message;
-        },
+        usingPlugin: (_options: unknown) => ({
+          withPluginContents: (contents: string, contentType: string) => {
+            message.pluginContents = { contentType, contents };
+            return { executeTest: async () => message };
+          },
+          expectsToReceive: (description: string) => {
+            message.description = description;
+            return { withPluginContents: (contents: string, contentType: string) => {
+              message.pluginContents = { contentType, contents };
+              return { executeTest: async () => message };
+            } };
+          },
+        }),
       };
+
       calls.push(message);
-      return interaction;
+      return unconfigured;
     },
   };
 }
@@ -57,12 +72,11 @@ describe('graphqlMessageInteraction', () => {
       data,
     });
 
-    expect(result).toBe(pact.calls[0]);
+    expect(result.executeTest).toBeInstanceOf(Function);
     expect(pact.calls).toHaveLength(1);
     const call = pact.calls[0];
 
-    expect(call.contentType).toBe('application/json');
-    expect(call.contents).toEqual({
+    expect(call.contents.content).toEqual({
       subscription: 'InventoryChanged',
       variables: { variantId: 'var-1' },
       data,
