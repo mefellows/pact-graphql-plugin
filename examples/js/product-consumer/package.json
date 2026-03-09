@@ -6,7 +6,7 @@
   "scripts": {
     "message": "vitest run subscription-message.test.ts",
     "test": "vitest run",
-    "verify": "ts-node ./verify-provider.ts"
+    "verify": "vitest run verify-provider.test.ts"
   },
   "keywords": [],
   "author": "",
