@@ -118,6 +118,18 @@ const getCategory = (id: string) => data.categories.find((category) => category.
 const getCustomer = (id: string) => data.customers.find((customer) => customer.id === id);
 const getOrder = (id: string) => data.orders.find((order) => order.id === id);
 
+export function buildInventoryChangedEvent(variantId: string) {
+  const variant = getVariant(variantId);
+  if (!variant) {
+    throw new Error('Variant not found');
+  }
+  return {
+    subscription: 'InventoryChanged',
+    variables: { variantId },
+    data: { inventoryChanged: variant.inventory },
+  };
+}
+
 const resolveNodeType = (obj: { id?: string }) => {
   if (!obj.id) {
     return null;
@@ -328,7 +340,8 @@ const resolvers = {
   },
   Variant: {
     price: (variant: { price: unknown }) => variant.price,
-    inventory: (variant: { inventory: unknown }) => variant.inventory,
+    inventory: (variant: { inventory: unknown; id: string }) =>
+      buildInventoryChangedEvent(variant.id).data.inventoryChanged,
   },
   Review: {
     author: (review: { authorId: string }) => {
