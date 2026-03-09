@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 import { resolve } from 'node:path';
 import { MessageProviderPact, Verifier } from '@pact-foundation/pact';
 
