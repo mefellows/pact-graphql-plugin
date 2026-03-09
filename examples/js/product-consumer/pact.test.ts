@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { PactV4 } from '@pact-foundation/pact';
 import { buildSchema, parse, validate, isObjectType } from 'graphql';
-import { graphqlInteraction } from 'pact-graphql-helper';
+import { graphqlHttpInteraction, graphqlInteraction, graphqlRequestBody } from 'pact-graphql-helper';
 
 process.env.PACT_GRAPHQL_PLUGIN_VERSION ??= '0.1.0';
 
@@ -31,6 +31,14 @@ const getUnknownFields = (typeName: string, value: Record<string, unknown>) => {
   return Object.keys(value).filter((field) => !fields[field]);
 };
 
+const postGraphqlRequest = async (mockServer: { url: string }, request: unknown) =>
+  fetch(`${mockServer.url}/graphql`, {
+    method: 'POST',
+    // Use application/graphql because the plugin matcher is keyed on this content type.
+    headers: { 'content-type': 'application/graphql' },
+    body: JSON.stringify(request),
+  });
+
 describe('GraphQL pact', () => {
   it('configures an interaction via the plugin', async () => {
     const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
@@ -39,24 +47,11 @@ describe('GraphQL pact', () => {
     interaction.given('a product with ID 10 exists');
     interaction.uponReceiving('a GraphQL product request');
 
-    const pluginInteraction = await graphqlInteraction(interaction, {
+    const responseInteraction = await graphqlHttpInteraction(interaction, {
       schema,
       query,
       variables: { id: '10' },
       operationName: 'GetProduct',
-    });
-    const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-      builder.headers({ 'content-type': 'application/graphql' });
-      builder.pluginContents(
-        'application/graphql',
-        JSON.stringify({
-          query_document: query.trim(),
-          operation_name: 'GetProduct',
-          variables_json: JSON.stringify({ id: '10' }),
-          transport: 'json_body',
-          schema_sdl: schema,
-        }),
-      );
     });
 
     await responseInteraction
@@ -73,15 +68,14 @@ describe('GraphQL pact', () => {
         });
       })
       .executeTest(async (mockServer) => {
-        await fetch(`${mockServer.url}/graphql`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/graphql' },
-          body: JSON.stringify({
-            query: query.trim(),
+        await postGraphqlRequest(
+          mockServer,
+          graphqlRequestBody({
+            query,
             variables: { id: '10' },
             operationName: 'GetProduct',
           }),
-        });
+        );
       });
   });
 
@@ -129,24 +123,10 @@ describe('GraphQL pact', () => {
         }
       `;
 
-      const pluginInteraction = await graphqlInteraction(interaction, {
+      const responseInteraction = await graphqlHttpInteraction(interaction, {
         schema,
         query: nestedQuery,
         operationName: 'ProductsByStatus',
-      });
-
-      const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-        builder.headers({ 'content-type': 'application/graphql' });
-        builder.pluginContents(
-          'application/graphql',
-          JSON.stringify({
-            query_document: nestedQuery.trim(),
-            operation_name: 'ProductsByStatus',
-            variables_json: null,
-            transport: 'json_body',
-            schema_sdl: schema,
-          }),
-        );
       });
 
       await responseInteraction
@@ -195,15 +175,13 @@ describe('GraphQL pact', () => {
           });
         })
         .executeTest(async (mockServer) => {
-          await fetch(`${mockServer.url}/graphql`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/graphql' },
-            body: JSON.stringify({
-              query: nestedQuery.trim(),
-              variables: null,
+          await postGraphqlRequest(
+            mockServer,
+            graphqlRequestBody({
+              query: nestedQuery,
               operationName: 'ProductsByStatus',
             }),
-          });
+          );
         });
     });
 
@@ -262,24 +240,10 @@ describe('GraphQL pact', () => {
         }
       `;
 
-      const pluginInteraction = await graphqlInteraction(interaction, {
+      const responseInteraction = await graphqlHttpInteraction(interaction, {
         schema,
         query: mutation,
         operationName: 'PlaceOrder',
-      });
-
-      const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-        builder.headers({ 'content-type': 'application/graphql' });
-        builder.pluginContents(
-          'application/graphql',
-          JSON.stringify({
-            query_document: mutation.trim(),
-            operation_name: 'PlaceOrder',
-            variables_json: null,
-            transport: 'json_body',
-            schema_sdl: schema,
-          }),
-        );
       });
 
       await responseInteraction
@@ -333,15 +297,13 @@ describe('GraphQL pact', () => {
           });
         })
         .executeTest(async (mockServer) => {
-          await fetch(`${mockServer.url}/graphql`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/graphql' },
-            body: JSON.stringify({
-              query: mutation.trim(),
-              variables: null,
+          await postGraphqlRequest(
+            mockServer,
+            graphqlRequestBody({
+              query: mutation,
               operationName: 'PlaceOrder',
             }),
-          });
+          );
         });
     });
 
@@ -445,24 +407,10 @@ describe('GraphQL pact', () => {
         }
       `;
 
-      const pluginInteraction = await graphqlInteraction(interaction, {
+      const responseInteraction = await graphqlHttpInteraction(interaction, {
         schema,
         query: canonicalQuery,
         operationName: 'ProductsByStatus',
-      });
-
-      const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-        builder.headers({ 'content-type': 'application/graphql' });
-        builder.pluginContents(
-          'application/graphql',
-          JSON.stringify({
-            query_document: canonicalQuery.trim(),
-            operation_name: 'ProductsByStatus',
-            variables_json: null,
-            transport: 'json_body',
-            schema_sdl: schema,
-          }),
-        );
       });
 
       await expect(
@@ -486,15 +434,13 @@ describe('GraphQL pact', () => {
             });
           })
           .executeTest(async (mockServer) => {
-            await fetch(`${mockServer.url}/graphql`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/graphql' },
-              body: JSON.stringify({
-                query: runtimeQuery.trim(),
-                variables: null,
+            await postGraphqlRequest(
+              mockServer,
+              graphqlRequestBody({
+                query: runtimeQuery,
                 operationName: 'ProductsByStatus',
               }),
-            });
+            );
           }),
       ).rejects.toThrow(/GraphQL query document differs/);
     });
@@ -508,25 +454,11 @@ describe('GraphQL pact', () => {
       interaction.given('a product with ID 10 exists');
       interaction.uponReceiving('a GraphQL product request with extra response fields');
 
-      const pluginInteraction = await graphqlInteraction(interaction, {
+      const responseInteraction = await graphqlHttpInteraction(interaction, {
         schema,
         query,
         variables: { id: '10' },
         operationName: 'GetProduct',
-      });
-
-      const responseInteraction = pluginInteraction.withRequest('POST', '/graphql', (builder) => {
-        builder.headers({ 'content-type': 'application/graphql' });
-        builder.pluginContents(
-          'application/graphql',
-          JSON.stringify({
-            query_document: query.trim(),
-            operation_name: 'GetProduct',
-            variables_json: JSON.stringify({ id: '10' }),
-            transport: 'json_body',
-            schema_sdl: schema,
-          }),
-        );
       });
 
       const responseBody = {
@@ -550,15 +482,14 @@ describe('GraphQL pact', () => {
           builder.jsonBody(responseBody);
         })
         .executeTest(async (mockServer) => {
-          await fetch(`${mockServer.url}/graphql`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/graphql' },
-            body: JSON.stringify({
-              query: query.trim(),
+          await postGraphqlRequest(
+            mockServer,
+            graphqlRequestBody({
+              query,
               variables: { id: '10' },
               operationName: 'GetProduct',
             }),
-          });
+          );
         });
     });
   });

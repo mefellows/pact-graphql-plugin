@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { graphqlInteraction } from '../src/index';
+import { graphqlHttpInteraction, graphqlInteraction, graphqlRequestBody } from '../src/index';
 
 function createFakeBuilder() {
   const calls: any[] = [];
@@ -9,6 +9,56 @@ function createFakeBuilder() {
     usingPlugin: (options: any) => {
       calls.push(options);
       return Promise.resolve(options);
+    },
+  };
+}
+
+function createFakeHttpInteraction() {
+  const calls: any[] = [];
+  return {
+    calls,
+    usingPlugin: (options: any) => {
+      calls.push({ plugin: options });
+      return Promise.resolve({
+        withRequest: (method: string, path: string, handler: (builder: any) => void) => {
+          const request: Record<string, any> = {
+            method,
+            path,
+            headers: undefined,
+            pluginContents: undefined,
+          };
+          const builder = {
+            headers: (headers: Record<string, string>) => {
+              request.headers = headers;
+            },
+            pluginContents: (contentType: string, contents: string) => {
+              request.pluginContents = { contentType, contents };
+            },
+          };
+          handler(builder);
+          calls.push(request);
+          return request;
+        },
+      });
+    },
+    withRequest: (method: string, path: string, handler: (builder: any) => void) => {
+      const request: Record<string, any> = {
+        method,
+        path,
+        headers: undefined,
+        pluginContents: undefined,
+      };
+      const builder = {
+        headers: (headers: Record<string, string>) => {
+          request.headers = headers;
+        },
+        pluginContents: (contentType: string, contents: string) => {
+          request.pluginContents = { contentType, contents };
+        },
+      };
+      handler(builder);
+      calls.push(request);
+      return request;
     },
   };
 }
@@ -79,5 +129,59 @@ describe('graphqlInteraction', () => {
         variables: '{"id": }',
       }),
     ).rejects.toThrow('variables string must contain valid JSON');
+  });
+});
+
+describe('graphqlHttpInteraction', () => {
+  it('builds HTTP request with plugin contents', async () => {
+    const interaction = createFakeHttpInteraction();
+
+    const result = await graphqlHttpInteraction(interaction, {
+      schema: 'type Query { ping(id: ID!): Ping } type Ping { id: ID! }',
+      query: `
+        query Ping($id: ID!) {
+          ping(id: $id) { id }
+        }
+      `,
+      operationName: 'PingQuery',
+      variables: { id: '10' },
+    });
+
+    expect(result).toBe(interaction.calls[1]);
+    expect(interaction.calls).toHaveLength(2);
+    const call = interaction.calls[1];
+    expect(call.method).toBe('POST');
+    expect(call.path).toBe('/graphql');
+    expect(call.headers).toEqual({ 'content-type': 'application/graphql' });
+    expect(call.pluginContents.contentType).toBe('application/graphql');
+
+    const payload = JSON.parse(call.pluginContents.contents);
+    expect(payload).toEqual({
+      query_document: 'query Ping($id: ID!) {\n  ping(id: $id) { id }\n}',
+      operation_name: 'PingQuery',
+      variables_json: JSON.stringify({ id: '10' }),
+      transport: 'json_body',
+      schema_sdl: 'type Query { ping(id: ID!): Ping } type Ping { id: ID! }',
+    });
+  });
+});
+
+describe('graphqlRequestBody', () => {
+  it('normalizes queries and parses variables', () => {
+    const body = graphqlRequestBody({
+      query: `
+        query Ping($id: ID!) {
+          ping(id: $id) { id }
+        }
+      `,
+      operationName: 'PingQuery',
+      variables: JSON.stringify({ id: '10' }),
+    });
+
+    expect(body).toEqual({
+      query: 'query Ping($id: ID!) {\n  ping(id: $id) { id }\n}',
+      variables: { id: '10' },
+      operationName: 'PingQuery',
+    });
   });
 });

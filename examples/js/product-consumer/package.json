@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "message": "vitest run subscription-message.test.ts",
     "test": "vitest run",
     "verify": "ts-node ./verify-provider.ts"
   },
