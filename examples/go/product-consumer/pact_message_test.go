@@ -28,7 +28,10 @@ func TestGraphQLMessagePactWritesPactFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pactDir := t.TempDir()
+	pactDir := filepath.Join("pacts", "messages")
+	if err := os.MkdirAll(pactDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	pactFile := filepath.Join(pactDir, "product-consumer-product-provider.json")
 
 	pact, err := message.NewAsynchronousPact(message.Config{
