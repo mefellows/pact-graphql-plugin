@@ -1,0 +1,103 @@
+{
+  "consumer": {
+    "name": "product-consumer"
+  },
+  "interactions": [
+    {
+      "description": "a GraphQL product request",
+      "pending": false,
+      "pluginConfiguration": {
+        "graphql": {
+          "inline_schema": {
+            "base64_sdl": "c2NoZW1hIHsKICBxdWVyeTogUXVlcnkKICBtdXRhdGlvbjogTXV0YXRpb24KICBzdWJzY3JpcHRpb246IFN1YnNjcmlwdGlvbgp9CgppbnRlcmZhY2UgTm9kZSB7CiAgaWQ6IElEIQp9CgplbnVtIFByb2R1Y3RTdGF0dXMgewogIEFDVElWRQogIERSQUZUCiAgT1VUX09GX1NUT0NLCiAgQVJDSElWRUQKfQoKZW51bSBDdXJyZW5jeUNvZGUgewogIFVTRAogIEVVUgogIEdCUAogIEFVRAp9CgplbnVtIE9yZGVyU3RhdHVzIHsKICBQTEFDRUQKICBQQUlECiAgRlVMRklMTEVECiAgU0hJUFBFRAogIENBTkNFTExFRAp9CgplbnVtIFNoaXBtZW50U3RhdHVzIHsKICBQRU5ESU5HCiAgSU5fVFJBTlNJVAogIERFTElWRVJFRAogIFJFVFVSTkVECn0KCmVudW0gUmV2aWV3UmF0aW5nIHsKICBPTkUKICBUV08KICBUSFJFRQogIEZPVVIKICBGSVZFCn0KCnVuaW9uIFNlYXJjaFJlc3VsdCA9IFByb2R1Y3QgfCBDYXRlZ29yeSB8IFJldmlldwoKdHlwZSBRdWVyeSB7CiAgcHJvZHVjdChpZDogSUQhKTogUHJvZHVjdAogIHByb2R1Y3RzKHN0YXR1czogUHJvZHVjdFN0YXR1cywgc2VhcmNoOiBTdHJpbmcsIGZpcnN0OiBJbnQsIGFmdGVyOiBTdHJpbmcpOiBbUHJvZHVjdCFdIQogIHNlYXJjaCh0ZXh0OiBTdHJpbmchKTogW1NlYXJjaFJlc3VsdCFdIQogIG9yZGVyKGlkOiBJRCEpOiBPcmRlcgp9Cgp0eXBlIE11dGF0aW9uIHsKICBhZGRUb0NhcnQoaW5wdXQ6IEFkZFRvQ2FydElucHV0ISk6IE9yZGVyTGluZSEKICBwbGFjZU9yZGVyKGlucHV0OiBPcmRlcklucHV0ISk6IE9yZGVyIQogIHN1Ym1pdFJldmlldyhpbnB1dDogUmV2aWV3SW5wdXQhKTogUmV2aWV3IQp9Cgp0eXBlIFN1YnNjcmlwdGlvbiB7CiAgaW52ZW50b3J5Q2hhbmdlZCh2YXJpYW50SWQ6IElEISk6IEludmVudG9yeSEKICBvcmRlclN0YXR1c0NoYW5nZWQob3JkZXJJZDogSUQhKTogT3JkZXIhCn0KCnR5cGUgUHJvZHVjdCBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBza3U6IFN0cmluZyEKICBuYW1lOiBTdHJpbmchCiAgZGVzY3JpcHRpb246IFN0cmluZwogIHN0YXR1czogUHJvZHVjdFN0YXR1cyEKICBjYXRlZ29yeTogQ2F0ZWdvcnkKICB0YWdzOiBbU3RyaW5nIV0hCiAgdmFyaWFudHM6IFtWYXJpYW50IV0hCiAgcmV2aWV3czogW1JldmlldyFdIQp9Cgp0eXBlIFZhcmlhbnQgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgc2t1OiBTdHJpbmchCiAgbmFtZTogU3RyaW5nIQogIHByaWNlOiBQcmljZSEKICBpbnZlbnRvcnk6IEludmVudG9yeSEKfQoKdHlwZSBDYXRlZ29yeSBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBuYW1lOiBTdHJpbmchCiAgc2x1ZzogU3RyaW5nIQogIHBhcmVudDogQ2F0ZWdvcnkKfQoKdHlwZSBJbnZlbnRvcnkgewogIHF1YW50aXR5OiBJbnQhCiAgdXBkYXRlZEF0OiBTdHJpbmchCn0KCnR5cGUgUHJpY2UgewogIGxpc3Q6IE1vbmV5IQogIHNhbGU6IE1vbmV5Cn0KCnR5cGUgTW9uZXkgewogIGFtb3VudDogRmxvYXQhCiAgY3VycmVuY3k6IEN1cnJlbmN5Q29kZSEKfQoKdHlwZSBSZXZpZXcgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgcmF0aW5nOiBSZXZpZXdSYXRpbmchCiAgdGl0bGU6IFN0cmluZwogIGJvZHk6IFN0cmluZwogIGF1dGhvcjogQ3VzdG9tZXIhCiAgY3JlYXRlZEF0OiBTdHJpbmchCn0KCnR5cGUgQ3VzdG9tZXIgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgZW1haWw6IFN0cmluZyEKICBuYW1lOiBTdHJpbmchCiAgZGVmYXVsdFNoaXBwaW5nQWRkcmVzczogQWRkcmVzcwogIGFkZHJlc3NlczogW0FkZHJlc3MhXSEKfQoKdHlwZSBPcmRlciBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBzdGF0dXM6IE9yZGVyU3RhdHVzIQogIGN1c3RvbWVyOiBDdXN0b21lciEKICBsaW5lczogW09yZGVyTGluZSFdIQogIHRvdGFsOiBNb25leSEKICBzaGlwbWVudHM6IFtTaGlwbWVudCFdIQogIHBsYWNlZEF0OiBTdHJpbmchCn0KCnR5cGUgT3JkZXJMaW5lIHsKICBwcm9kdWN0OiBQcm9kdWN0IQogIHZhcmlhbnQ6IFZhcmlhbnQhCiAgcXVhbnRpdHk6IEludCEKICBwcmljZTogUHJpY2UhCn0KCnR5cGUgU2hpcG1lbnQgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgc3RhdHVzOiBTaGlwbWVudFN0YXR1cyEKICB0cmFja2luZ051bWJlcjogU3RyaW5nCiAgY2FycmllcjogU3RyaW5nCiAgYWRkcmVzczogQWRkcmVzcyEKICBzaGlwcGVkQXQ6IFN0cmluZwogIGRlbGl2ZXJlZEF0OiBTdHJpbmcKfQoKdHlwZSBBZGRyZXNzIHsKICBsaW5lMTogU3RyaW5nIQogIGxpbmUyOiBTdHJpbmcKICBjaXR5OiBTdHJpbmchCiAgc3RhdGU6IFN0cmluZyEKICBwb3N0YWxDb2RlOiBTdHJpbmchCiAgY291bnRyeTogU3RyaW5nIQp9CgppbnB1dCBBZGRUb0NhcnRJbnB1dCB7CiAgcHJvZHVjdElkOiBJRCEKICB2YXJpYW50SWQ6IElECiAgcXVhbnRpdHk6IEludCEKfQoKaW5wdXQgT3JkZXJJbnB1dCB7CiAgY3VzdG9tZXJJZDogSUQhCiAgbGluZXM6IFtPcmRlckxpbmVJbnB1dCFdIQogIHNoaXBwaW5nQWRkcmVzczogQWRkcmVzc0lucHV0IQogIHBheW1lbnRUb2tlbjogU3RyaW5nCn0KCmlucHV0IE9yZGVyTGluZUlucHV0IHsKICBwcm9kdWN0SWQ6IElEIQogIHZhcmlhbnRJZDogSUQKICBxdWFudGl0eTogSW50IQp9CgppbnB1dCBBZGRyZXNzSW5wdXQgewogIGxpbmUxOiBTdHJpbmchCiAgbGluZTI6IFN0cmluZwogIGNpdHk6IFN0cmluZyEKICBzdGF0ZTogU3RyaW5nIQogIHBvc3RhbENvZGU6IFN0cmluZyEKICBjb3VudHJ5OiBTdHJpbmchCn0KCmlucHV0IFJldmlld0lucHV0IHsKICBwcm9kdWN0SWQ6IElEIQogIHJhdGluZzogUmV2aWV3UmF0aW5nIQogIHRpdGxlOiBTdHJpbmcKICBib2R5OiBTdHJpbmcKfQo="
+          },
+          "operation_name": "GetProduct",
+          "query_document": "query GetProduct($id: ID!) {\n  product(id: $id) {\n    id\n    name\n    status\n  }\n}",
+          "request": {
+            "operation_name": "GetProduct",
+            "query_document": "query GetProduct($id: ID!) {\n  product(id: $id) {\n    id\n    name\n    status\n  }\n}",
+            "transport": "json_body",
+            "variables_json": "{\"id\":\"10\"}"
+          },
+          "schema_inline_base64": "c2NoZW1hIHsKICBxdWVyeTogUXVlcnkKICBtdXRhdGlvbjogTXV0YXRpb24KICBzdWJzY3JpcHRpb246IFN1YnNjcmlwdGlvbgp9CgppbnRlcmZhY2UgTm9kZSB7CiAgaWQ6IElEIQp9CgplbnVtIFByb2R1Y3RTdGF0dXMgewogIEFDVElWRQogIERSQUZUCiAgT1VUX09GX1NUT0NLCiAgQVJDSElWRUQKfQoKZW51bSBDdXJyZW5jeUNvZGUgewogIFVTRAogIEVVUgogIEdCUAogIEFVRAp9CgplbnVtIE9yZGVyU3RhdHVzIHsKICBQTEFDRUQKICBQQUlECiAgRlVMRklMTEVECiAgU0hJUFBFRAogIENBTkNFTExFRAp9CgplbnVtIFNoaXBtZW50U3RhdHVzIHsKICBQRU5ESU5HCiAgSU5fVFJBTlNJVAogIERFTElWRVJFRAogIFJFVFVSTkVECn0KCmVudW0gUmV2aWV3UmF0aW5nIHsKICBPTkUKICBUV08KICBUSFJFRQogIEZPVVIKICBGSVZFCn0KCnVuaW9uIFNlYXJjaFJlc3VsdCA9IFByb2R1Y3QgfCBDYXRlZ29yeSB8IFJldmlldwoKdHlwZSBRdWVyeSB7CiAgcHJvZHVjdChpZDogSUQhKTogUHJvZHVjdAogIHByb2R1Y3RzKHN0YXR1czogUHJvZHVjdFN0YXR1cywgc2VhcmNoOiBTdHJpbmcsIGZpcnN0OiBJbnQsIGFmdGVyOiBTdHJpbmcpOiBbUHJvZHVjdCFdIQogIHNlYXJjaCh0ZXh0OiBTdHJpbmchKTogW1NlYXJjaFJlc3VsdCFdIQogIG9yZGVyKGlkOiBJRCEpOiBPcmRlcgp9Cgp0eXBlIE11dGF0aW9uIHsKICBhZGRUb0NhcnQoaW5wdXQ6IEFkZFRvQ2FydElucHV0ISk6IE9yZGVyTGluZSEKICBwbGFjZU9yZGVyKGlucHV0OiBPcmRlcklucHV0ISk6IE9yZGVyIQogIHN1Ym1pdFJldmlldyhpbnB1dDogUmV2aWV3SW5wdXQhKTogUmV2aWV3IQp9Cgp0eXBlIFN1YnNjcmlwdGlvbiB7CiAgaW52ZW50b3J5Q2hhbmdlZCh2YXJpYW50SWQ6IElEISk6IEludmVudG9yeSEKICBvcmRlclN0YXR1c0NoYW5nZWQob3JkZXJJZDogSUQhKTogT3JkZXIhCn0KCnR5cGUgUHJvZHVjdCBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBza3U6IFN0cmluZyEKICBuYW1lOiBTdHJpbmchCiAgZGVzY3JpcHRpb246IFN0cmluZwogIHN0YXR1czogUHJvZHVjdFN0YXR1cyEKICBjYXRlZ29yeTogQ2F0ZWdvcnkKICB0YWdzOiBbU3RyaW5nIV0hCiAgdmFyaWFudHM6IFtWYXJpYW50IV0hCiAgcmV2aWV3czogW1JldmlldyFdIQp9Cgp0eXBlIFZhcmlhbnQgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgc2t1OiBTdHJpbmchCiAgbmFtZTogU3RyaW5nIQogIHByaWNlOiBQcmljZSEKICBpbnZlbnRvcnk6IEludmVudG9yeSEKfQoKdHlwZSBDYXRlZ29yeSBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBuYW1lOiBTdHJpbmchCiAgc2x1ZzogU3RyaW5nIQogIHBhcmVudDogQ2F0ZWdvcnkKfQoKdHlwZSBJbnZlbnRvcnkgewogIHF1YW50aXR5OiBJbnQhCiAgdXBkYXRlZEF0OiBTdHJpbmchCn0KCnR5cGUgUHJpY2UgewogIGxpc3Q6IE1vbmV5IQogIHNhbGU6IE1vbmV5Cn0KCnR5cGUgTW9uZXkgewogIGFtb3VudDogRmxvYXQhCiAgY3VycmVuY3k6IEN1cnJlbmN5Q29kZSEKfQoKdHlwZSBSZXZpZXcgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgcmF0aW5nOiBSZXZpZXdSYXRpbmchCiAgdGl0bGU6IFN0cmluZwogIGJvZHk6IFN0cmluZwogIGF1dGhvcjogQ3VzdG9tZXIhCiAgY3JlYXRlZEF0OiBTdHJpbmchCn0KCnR5cGUgQ3VzdG9tZXIgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgZW1haWw6IFN0cmluZyEKICBuYW1lOiBTdHJpbmchCiAgZGVmYXVsdFNoaXBwaW5nQWRkcmVzczogQWRkcmVzcwogIGFkZHJlc3NlczogW0FkZHJlc3MhXSEKfQoKdHlwZSBPcmRlciBpbXBsZW1lbnRzIE5vZGUgewogIGlkOiBJRCEKICBzdGF0dXM6IE9yZGVyU3RhdHVzIQogIGN1c3RvbWVyOiBDdXN0b21lciEKICBsaW5lczogW09yZGVyTGluZSFdIQogIHRvdGFsOiBNb25leSEKICBzaGlwbWVudHM6IFtTaGlwbWVudCFdIQogIHBsYWNlZEF0OiBTdHJpbmchCn0KCnR5cGUgT3JkZXJMaW5lIHsKICBwcm9kdWN0OiBQcm9kdWN0IQogIHZhcmlhbnQ6IFZhcmlhbnQhCiAgcXVhbnRpdHk6IEludCEKICBwcmljZTogUHJpY2UhCn0KCnR5cGUgU2hpcG1lbnQgaW1wbGVtZW50cyBOb2RlIHsKICBpZDogSUQhCiAgc3RhdHVzOiBTaGlwbWVudFN0YXR1cyEKICB0cmFja2luZ051bWJlcjogU3RyaW5nCiAgY2FycmllcjogU3RyaW5nCiAgYWRkcmVzczogQWRkcmVzcyEKICBzaGlwcGVkQXQ6IFN0cmluZwogIGRlbGl2ZXJlZEF0OiBTdHJpbmcKfQoKdHlwZSBBZGRyZXNzIHsKICBsaW5lMTogU3RyaW5nIQogIGxpbmUyOiBTdHJpbmcKICBjaXR5OiBTdHJpbmchCiAgc3RhdGU6IFN0cmluZyEKICBwb3N0YWxDb2RlOiBTdHJpbmchCiAgY291bnRyeTogU3RyaW5nIQp9CgppbnB1dCBBZGRUb0NhcnRJbnB1dCB7CiAgcHJvZHVjdElkOiBJRCEKICB2YXJpYW50SWQ6IElECiAgcXVhbnRpdHk6IEludCEKfQoKaW5wdXQgT3JkZXJJbnB1dCB7CiAgY3VzdG9tZXJJZDogSUQhCiAgbGluZXM6IFtPcmRlckxpbmVJbnB1dCFdIQogIHNoaXBwaW5nQWRkcmVzczogQWRkcmVzc0lucHV0IQogIHBheW1lbnRUb2tlbjogU3RyaW5nCn0KCmlucHV0IE9yZGVyTGluZUlucHV0IHsKICBwcm9kdWN0SWQ6IElEIQogIHZhcmlhbnRJZDogSUQKICBxdWFudGl0eTogSW50IQp9CgppbnB1dCBBZGRyZXNzSW5wdXQgewogIGxpbmUxOiBTdHJpbmchCiAgbGluZTI6IFN0cmluZwogIGNpdHk6IFN0cmluZyEKICBzdGF0ZTogU3RyaW5nIQogIHBvc3RhbENvZGU6IFN0cmluZyEKICBjb3VudHJ5OiBTdHJpbmchCn0KCmlucHV0IFJldmlld0lucHV0IHsKICBwcm9kdWN0SWQ6IElEIQogIHJhdGluZzogUmV2aWV3UmF0aW5nIQogIHRpdGxlOiBTdHJpbmcKICBib2R5OiBTdHJpbmcKfQo=",
+          "schema_ref": {
+            "encoding": "utf-8",
+            "hash": "fa7e57bd3921de7b4ca0d5d45fba460b74ad25b6fcb4ee45f5fb22a116502d68"
+          },
+          "transport": "json_body",
+          "variables_json": "{\"id\":\"10\"}"
+        }
+      },
+      "request": {
+        "body": {
+          "content": {
+            "operationName": "GetProduct",
+            "query": "query GetProduct($id: ID!) {\n  product(id: $id) {\n    id\n    name\n    status\n  }\n}",
+            "variables": {
+              "id": "10"
+            }
+          },
+          "contentType": "application/graphql",
+          "contentTypeHint": "TEXT",
+          "encoded": false
+        },
+        "headers": {
+          "content-type": [
+            "application/graphql"
+          ]
+        },
+        "method": "POST",
+        "path": "/graphql"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "data": {
+              "product": {
+                "id": "10",
+                "name": "product name",
+                "status": "ACTIVE"
+              }
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "content-type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    },
+    "plugins": [
+      {
+        "configuration": {},
+        "name": "graphql",
+        "version": "0.1.0"
+      }
+    ]
+  },
+  "provider": {
+    "name": "product-provider"
+  }
+}
