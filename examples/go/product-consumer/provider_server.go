@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 )
 
 type graphqlRequest struct {
@@ -56,6 +57,7 @@ func startProviderServer() (*providerServer, error) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		defer r.Body.Close()
 
 		var payload graphqlRequest
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -75,7 +77,12 @@ func startProviderServer() (*providerServer, error) {
 		_ = json.NewEncoder(w).Encode(response)
 	})
 
-	server := &http.Server{Handler: mux}
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+	}
 	go func() {
 		_ = server.Serve(listener)
 	}()
