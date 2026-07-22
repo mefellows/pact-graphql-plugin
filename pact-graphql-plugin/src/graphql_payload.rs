@@ -81,7 +81,7 @@ impl CanonicalGraphqlRequest {
             schema_sdl,
         } = req;
 
-        query_document = canonicalize_query(&query_document);
+        query_document = canonicalize_query(&query_document, operation_name.as_deref());
         let variables_json = canonicalize_variables(variables_json)?;
 
         let canonical_schema = schema_sdl
@@ -127,7 +127,7 @@ impl CanonicalGraphqlRequest {
             bail!("query_document is required");
         }
 
-        let query_document = canonicalize_query(&raw_query);
+        let query_document = canonicalize_query(&raw_query, operation_name.as_deref());
         let variables_json = canonicalize_variables(raw_variables)?;
 
         let canonical_schema = resolve_schema_sdl_indicator(schema_base64, registry)?;
@@ -764,8 +764,15 @@ fn detect_fragment_cycle(stack: &[&str], next: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn canonicalize_query(input: &str) -> String {
-    dedent_and_trim(input)
+/// Canonical text form of a query document. Falls back to a plain dedent when
+/// the document does not parse, so that malformed input still produces a
+/// comparable string rather than an error at this layer — parse errors are
+/// reported by the validation path with far better messages.
+pub(crate) fn canonicalize_query(input: &str, operation_name: Option<&str>) -> String {
+    match crate::query_ast::canonical_document(input, operation_name) {
+        Ok(canonical) => canonical,
+        Err(_) => dedent_and_trim(input),
+    }
 }
 
 fn strip_indent(line: &str, indent: usize) -> String {

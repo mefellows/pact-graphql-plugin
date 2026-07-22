@@ -1,6 +1,7 @@
 pub mod encoder;
 pub mod graphql_payload;
 pub mod interaction;
+pub(crate) mod query_ast;
 pub mod schema;
 pub(crate) mod schema_index;
 pub mod server;

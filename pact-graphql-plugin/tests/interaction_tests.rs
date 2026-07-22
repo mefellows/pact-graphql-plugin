@@ -99,7 +99,7 @@ fn canonicalizes_request_payload() {
 
     assert_eq!(
         config.request.query_document,
-        "query GetProduct($id: ID!) {\n    product(id: $id) {\n        id\n\n        name\n    }\n}"
+        "query GetProduct($id: ID!) {\n  product(id: $id) {\n    id\n    name\n  }\n}"
     );
     assert_eq!(config.request.operation_name.as_deref(), Some("GetProduct"));
     let canonical_variables = config

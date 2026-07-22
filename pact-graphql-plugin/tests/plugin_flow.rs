@@ -34,7 +34,7 @@ fn make_contents_config(req: &GraphqlPluginRequest) -> ConfigureInteractionReque
 }
 
 fn expected_graphql_body() -> &'static str {
-    r#"{"query":"query PingQuery { ping }","operationName":"PingQuery","variables":{"id":1}}"#
+    r#"{"query":"query PingQuery {\n  ping\n}","operationName":"PingQuery","variables":{"id":1}}"#
 }
 
 #[tokio::test]
