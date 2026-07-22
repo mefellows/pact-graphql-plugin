@@ -637,10 +637,69 @@ Expected: PASS — all 7 tests.
 
 If `rejects_an_unresolvable_fragment` fails because the parse succeeds but no error is raised, confirm the spread is actually reached by `inline_selection_set` — it must be nested inside `product`'s selection set, and `inline_selection_set` must recurse into `Selection::Field`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Make canonical printing the stored form**
+
+`canonical_document` must be used by shipped code, not only by tests. Wire it into `canonicalize_query`, so the query text persisted into the pact file is the canonical form.
+
+In `pact-graphql-plugin/src/graphql_payload.rs`, replace:
+
+```rust
+pub(crate) fn canonicalize_query(input: &str) -> String {
+    dedent_and_trim(input)
+}
+```
+
+with:
+
+```rust
+/// Canonical text form of a query document. Falls back to a plain dedent when
+/// the document does not parse, so that malformed input still produces a
+/// comparable string rather than an error at this layer — parse errors are
+/// reported by the validation path with far better messages.
+pub(crate) fn canonicalize_query(input: &str, operation_name: Option<&str>) -> String {
+    match crate::query_ast::canonical_document(input, operation_name) {
+        Ok(canonical) => canonical,
+        Err(_) => dedent_and_trim(input),
+    }
+}
+```
+
+Update both call sites to pass the operation name:
+- `from_interaction_config` (currently line 88): `query_document = canonicalize_query(&query_document, operation_name.as_deref());` — note `operation_name` is destructured from `req` just above, so this compiles as-is.
+- `from_http_request` (currently line 134): `let query_document = canonicalize_query(&raw_query, operation_name.as_deref());`
+
+Two consequences to be aware of, both intended:
+- When the document defines several operations and `operation_name` selects one, the canonical form contains **only** the selected operation. Comparison stays correct because both sides canonicalise the same way.
+- Fragment spreads are inlined, so the stored query has no `fragment` definitions.
+
+- [ ] **Step 6: Update the tests that assert on stored query text**
+
+Run: `cargo test`
+Expected: FAIL. `pact-graphql-plugin/tests/plugin_flow.rs::configure_and_generate_json_body` asserts the generated body equals:
+
+```
+{"query":"query PingQuery { ping }","operationName":"PingQuery","variables":{"id":1}}
+```
+
+The canonical form of that query is now multi-line. Update `expected_graphql_body()` to the canonical text — run the test once and copy the actual value from the assertion failure rather than hand-writing the escaping:
+
+```rust
+fn expected_graphql_body() -> &'static str {
+    r#"{"query":"query PingQuery {\n  ping\n}","operationName":"PingQuery","variables":{"id":1}}"#
+}
+```
+
+Apply the same treatment to any assertion in `pact-graphql-plugin/tests/interaction_tests.rs` or `tests/encoder_tests.rs` that compares stored query text. Do not weaken these to `contains()` — keep them exact.
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `cargo test`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add pact-graphql-plugin/src/query_ast.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/tests/query_ast_tests.rs
+git add pact-graphql-plugin/src/query_ast.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/src/graphql_payload.rs pact-graphql-plugin/tests/
 git commit -m "feat: canonicalise query documents through the AST"
 ```
 
