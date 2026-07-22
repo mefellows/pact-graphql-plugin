@@ -442,7 +442,7 @@ describe('GraphQL pact', () => {
               }),
             );
           }),
-      ).rejects.toThrow(/GraphQL query document differs/);
+      ).rejects.toThrow(/is not selected by the actual query/);
     });
   });
 

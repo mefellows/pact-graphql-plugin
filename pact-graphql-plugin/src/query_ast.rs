@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, bail, Context};
 use graphql_parser::query::{
-    parse_query, Definition, Document, FragmentDefinition, OperationDefinition, Selection,
-    SelectionSet,
+    parse_query, Definition, Document, Field as QueryField, FragmentDefinition,
+    OperationDefinition, Selection, SelectionSet,
 };
 
 /// Parses `query`, selects the requested operation, inlines every fragment
@@ -87,8 +87,6 @@ pub(crate) fn operation_name_of<'a>(
     }
 }
 
-// TODO(task-4): remove this allow once diff_operations calls this.
-#[allow(dead_code)]
 pub(crate) fn selection_set_of<'a>(
     operation: &'a OperationDefinition<'static, String>,
 ) -> &'a SelectionSet<'static, String> {
@@ -109,6 +107,17 @@ fn selection_set_mut<'a>(
         OperationDefinition::Subscription(subscription) => &mut subscription.selection_set,
         OperationDefinition::SelectionSet(selection_set) => selection_set,
     }
+}
+
+/// Builds the shared "fragment forms a cycle" diagnostic. `stack` holds the
+/// fragment names already being expanded (outermost first) and `next` is the
+/// fragment name whose spread would re-enter the stack. Used by both
+/// `inline_selection_set` here and `graphql_payload::detect_fragment_cycle` so
+/// the message can only be defined in one place.
+pub(crate) fn fragment_cycle_error(stack: &[&str], next: &str) -> anyhow::Error {
+    let mut cycle: Vec<&str> = stack.to_vec();
+    cycle.push(next);
+    anyhow!("fragment `{}` forms a cycle: {}", next, cycle.join(" -> "))
 }
 
 /// Replaces every `...Name` spread with the fragment's own selections, in place.
@@ -137,14 +146,12 @@ fn inline_selection_set(
                 if let Some(position) =
                     stack.iter().position(|name| name == &spread.fragment_name)
                 {
-                    let mut cycle: Vec<&str> =
+                    let cycle_stack: Vec<&str> =
                         stack[position..].iter().map(String::as_str).collect();
-                    cycle.push(spread.fragment_name.as_str());
-                    bail!(
-                        "fragment `{}` forms a cycle: {}",
-                        spread.fragment_name,
-                        cycle.join(" -> ")
-                    );
+                    return Err(fragment_cycle_error(
+                        &cycle_stack,
+                        spread.fragment_name.as_str(),
+                    ));
                 }
 
                 let fragment = fragments.get(&spread.fragment_name).ok_or_else(|| {
@@ -169,6 +176,207 @@ fn inline_selection_set(
 
     selection_set.items = expanded;
     Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct QueryDiff {
+    pub(crate) path: String,
+    pub(crate) expected: String,
+    pub(crate) actual: String,
+    pub(crate) description: String,
+}
+
+impl QueryDiff {
+    fn new(
+        path: impl Into<String>,
+        expected: impl Into<String>,
+        actual: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            expected: expected.into(),
+            actual: actual.into(),
+            description: description.into(),
+        }
+    }
+}
+
+fn operation_kind_label(operation: &OperationDefinition<'static, String>) -> &'static str {
+    match operation {
+        OperationDefinition::Query(_) | OperationDefinition::SelectionSet(_) => "query",
+        OperationDefinition::Mutation(_) => "mutation",
+        OperationDefinition::Subscription(_) => "subscription",
+    }
+}
+
+/// The response key a field contributes: its alias when present, else its name.
+fn response_key<'a>(field: &'a QueryField<'static, String>) -> &'a str {
+    field.alias.as_deref().unwrap_or(field.name.as_str())
+}
+
+fn render_arguments(field: &QueryField<'static, String>) -> String {
+    if field.arguments.is_empty() {
+        return String::from("()");
+    }
+    let mut parts: Vec<String> = field
+        .arguments
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}"))
+        .collect();
+    // Argument order is not semantically significant in GraphQL.
+    parts.sort();
+    format!("({})", parts.join(", "))
+}
+
+pub(crate) fn diff_operations(
+    expected: &OperationDefinition<'static, String>,
+    actual: &OperationDefinition<'static, String>,
+) -> Vec<QueryDiff> {
+    let mut diffs = Vec::new();
+
+    let expected_kind = operation_kind_label(expected);
+    let actual_kind = operation_kind_label(actual);
+    if expected_kind != actual_kind {
+        diffs.push(QueryDiff::new(
+            "",
+            expected_kind,
+            actual_kind,
+            "GraphQL operation type differs",
+        ));
+        return diffs;
+    }
+
+    let expected_name = operation_name_of(expected).unwrap_or("");
+    let actual_name = operation_name_of(actual).unwrap_or("");
+    if expected_name != actual_name {
+        diffs.push(QueryDiff::new(
+            "",
+            expected_name,
+            actual_name,
+            "GraphQL operation name differs",
+        ));
+    }
+
+    diff_selection_sets(
+        selection_set_of(expected),
+        selection_set_of(actual),
+        "",
+        &mut diffs,
+    );
+
+    diffs
+}
+
+fn join_path(prefix: &str, key: &str) -> String {
+    if prefix.is_empty() {
+        key.to_string()
+    } else {
+        format!("{prefix}.{key}")
+    }
+}
+
+fn diff_selection_sets(
+    expected: &SelectionSet<'static, String>,
+    actual: &SelectionSet<'static, String>,
+    prefix: &str,
+    diffs: &mut Vec<QueryDiff>,
+) {
+    let expected_fields = collect_fields(expected);
+    let actual_fields = collect_fields(actual);
+
+    for (key, expected_field) in &expected_fields {
+        let path = join_path(prefix, key);
+        match actual_fields.iter().find(|(name, _)| name == key) {
+            None => diffs.push(QueryDiff::new(
+                path,
+                key.clone(),
+                "<absent>",
+                format!("field `{key}` was expected but is not selected by the actual query"),
+            )),
+            Some((_, actual_field)) => {
+                if expected_field.name != actual_field.name {
+                    diffs.push(QueryDiff::new(
+                        path.clone(),
+                        expected_field.name.clone(),
+                        actual_field.name.clone(),
+                        format!("alias `{key}` resolves to a different field"),
+                    ));
+                    continue;
+                }
+
+                let expected_args = render_arguments(expected_field);
+                let actual_args = render_arguments(actual_field);
+                if expected_args != actual_args {
+                    diffs.push(QueryDiff::new(
+                        path.clone(),
+                        expected_args,
+                        actual_args,
+                        format!("field `{key}` argument values differ"),
+                    ));
+                }
+
+                diff_selection_sets(
+                    &expected_field.selection_set,
+                    &actual_field.selection_set,
+                    &path,
+                    diffs,
+                );
+            }
+        }
+    }
+
+    for (key, _) in &actual_fields {
+        if !expected_fields.iter().any(|(name, _)| name == key) {
+            diffs.push(QueryDiff::new(
+                join_path(prefix, key),
+                "<absent>",
+                key.clone(),
+                format!("field `{key}` is selected by the actual query but was not expected"),
+            ));
+        }
+    }
+}
+
+/// Flattens a selection set into `(response key, field)` pairs. Inline
+/// fragments are flattened into their parent — the type condition is preserved
+/// in the response key so two different conditions do not collide.
+fn collect_fields<'a>(
+    selection_set: &'a SelectionSet<'static, String>,
+) -> Vec<(String, &'a QueryField<'static, String>)> {
+    let mut fields = Vec::new();
+    collect_fields_into(selection_set, "", &mut fields);
+    fields
+}
+
+fn collect_fields_into<'a>(
+    selection_set: &'a SelectionSet<'static, String>,
+    condition_prefix: &str,
+    fields: &mut Vec<(String, &'a QueryField<'static, String>)>,
+) {
+    for selection in &selection_set.items {
+        match selection {
+            Selection::Field(field) => {
+                let key = if condition_prefix.is_empty() {
+                    response_key(field).to_string()
+                } else {
+                    format!("{condition_prefix}{}", response_key(field))
+                };
+                fields.push((key, field));
+            }
+            Selection::InlineFragment(fragment) => {
+                let condition = match &fragment.type_condition {
+                    Some(graphql_parser::query::TypeCondition::On(name)) => {
+                        format!("... on {name}/")
+                    }
+                    None => String::new(),
+                };
+                collect_fields_into(&fragment.selection_set, &condition, fields);
+            }
+            // Spreads were inlined by `parse_and_inline` before we get here.
+            Selection::FragmentSpread(_) => {}
+        }
+    }
 }
 
 #[cfg(test)]

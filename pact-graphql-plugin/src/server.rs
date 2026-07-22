@@ -799,8 +799,12 @@ mod tests {
             let mismatches = response.results.get("$").expect("mismatch entries");
             assert_eq!(mismatches.mismatches.len(), 1);
             let mismatch = &mismatches.mismatches[0];
-            assert_eq!(mismatch.path, "/payload/query_document");
-            assert_eq!(mismatch.mismatch, "GraphQL query document differs");
+            assert_eq!(mismatch.path, "/payload/query_document/products/name");
+            assert!(
+                mismatch.mismatch.contains("not selected by the actual query"),
+                "{}",
+                mismatch.mismatch
+            );
         });
     }
 
@@ -984,8 +988,12 @@ mod tests {
                 Some(proto::verification_result_item::Result::Mismatch(m)) => m,
                 _ => panic!("expected mismatch result"),
             };
-            assert_eq!(mismatch.path, "/payload/query_document");
-            assert_eq!(mismatch.mismatch, "GraphQL query document differs");
+            assert_eq!(mismatch.path, "/payload/query_document/products/name");
+            assert!(
+                mismatch.mismatch.contains("not selected by the actual query"),
+                "{}",
+                mismatch.mismatch
+            );
         });
     }
 

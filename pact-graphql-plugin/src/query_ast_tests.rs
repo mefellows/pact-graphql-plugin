@@ -1,5 +1,93 @@
 use super::*;
 
+fn diff_queries(
+    expected: &str,
+    actual: &str,
+    operation_name: Option<&str>,
+) -> anyhow::Result<Vec<QueryDiff>> {
+    let expected = parse_and_inline(expected, operation_name)?;
+    let actual = parse_and_inline(actual, operation_name)?;
+    Ok(diff_operations(&expected, &actual))
+}
+
+#[test]
+fn identical_queries_produce_no_diff() {
+    let diffs = diff_queries(
+        "query Q { product { id name } }",
+        "query Q {\n  product {\n    id\n    name\n  }\n}",
+        Some("Q"),
+    )
+    .unwrap();
+    assert!(diffs.is_empty(), "expected no diffs, got {diffs:#?}");
+}
+
+#[test]
+fn reports_the_path_of_a_missing_field() {
+    let diffs = diff_queries(
+        "query Q { product { id name status } }",
+        "query Q { product { id name } }",
+        Some("Q"),
+    )
+    .unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product.status");
+    assert!(diffs[0].description.contains("not selected"), "{}", diffs[0].description);
+}
+
+#[test]
+fn reports_the_path_of_an_unexpected_field() {
+    let diffs = diff_queries(
+        "query Q { product { id } }",
+        "query Q { product { id name } }",
+        Some("Q"),
+    )
+    .unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product.name");
+    assert!(diffs[0].description.contains("not expected"), "{}", diffs[0].description);
+}
+
+#[test]
+fn reports_nested_paths() {
+    let diffs = diff_queries(
+        "query Q { product { category { id name } } }",
+        "query Q { product { category { id } } }",
+        Some("Q"),
+    )
+    .unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product.category.name");
+}
+
+#[test]
+fn reports_argument_differences() {
+    let diffs = diff_queries(
+        "query Q { product(id: \"10\") { id } }",
+        "query Q { product(id: \"11\") { id } }",
+        Some("Q"),
+    )
+    .unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product");
+    assert!(diffs[0].description.contains("argument"), "{}", diffs[0].description);
+    assert!(diffs[0].expected.contains("10"));
+    assert!(diffs[0].actual.contains("11"));
+}
+
+#[test]
+fn reports_operation_type_differences() {
+    let diffs = diff_queries(
+        "query Q { thing { id } }",
+        "mutation Q { thing { id } }",
+        Some("Q"),
+    )
+    .unwrap();
+    assert!(
+        diffs.iter().any(|d| d.description.contains("operation type")),
+        "got {diffs:#?}"
+    );
+}
+
 #[test]
 fn ignores_insignificant_whitespace() {
     let a = canonical_document("query Q { product(id: $id) { id name } }", Some("Q")).unwrap();

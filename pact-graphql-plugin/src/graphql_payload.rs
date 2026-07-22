@@ -171,13 +171,43 @@ impl CanonicalGraphqlRequest {
     pub fn diff(&self, other: &CanonicalGraphqlRequest) -> Vec<RequestMismatch> {
         let mut mismatches = Vec::new();
 
-        if self.payload.query_document != other.payload.query_document {
-            mismatches.push(RequestMismatch::new(
-                "/payload/query_document",
-                self.payload.query_document.clone(),
-                other.payload.query_document.clone(),
-                "GraphQL query document differs",
-            ));
+        match (
+            crate::query_ast::parse_and_inline(
+                &self.payload.query_document,
+                self.payload.operation_name.as_deref(),
+            ),
+            crate::query_ast::parse_and_inline(
+                &other.payload.query_document,
+                other.payload.operation_name.as_deref(),
+            ),
+        ) {
+            (Ok(expected_op), Ok(actual_op)) => {
+                for diff in crate::query_ast::diff_operations(&expected_op, &actual_op) {
+                    let path = if diff.path.is_empty() {
+                        "/payload/query_document".to_string()
+                    } else {
+                        format!("/payload/query_document/{}", diff.path.replace('.', "/"))
+                    };
+                    mismatches.push(RequestMismatch::new(
+                        &path,
+                        diff.expected,
+                        diff.actual,
+                        &diff.description,
+                    ));
+                }
+            }
+            // If either document fails to parse here, fall back to the text comparison
+            // so we still report *something* rather than silently passing.
+            _ => {
+                if self.payload.query_document != other.payload.query_document {
+                    mismatches.push(RequestMismatch::new(
+                        "/payload/query_document",
+                        self.payload.query_document.clone(),
+                        other.payload.query_document.clone(),
+                        "GraphQL query document differs",
+                    ));
+                }
+            }
         }
 
         compare_optional_field(
@@ -757,9 +787,10 @@ fn validate_introspection_type_arguments(field: &QueryField<'_, String>) -> anyh
 
 fn detect_fragment_cycle(stack: &[&str], next: &str) -> anyhow::Result<()> {
     if let Some(position) = stack.iter().position(|name| *name == next) {
-        let mut cycle: Vec<&str> = stack[position..].to_vec();
-        cycle.push(next);
-        bail!("fragment `{}` forms a cycle: {}", next, cycle.join(" -> "));
+        return Err(crate::query_ast::fragment_cycle_error(
+            &stack[position..],
+            next,
+        ));
     }
     Ok(())
 }
@@ -865,3 +896,7 @@ fn normalize_newlines(input: &str) -> Cow<'_, str> {
         Cow::Borrowed(input)
     }
 }
+
+#[cfg(test)]
+#[path = "graphql_payload_tests.rs"]
+mod tests;
