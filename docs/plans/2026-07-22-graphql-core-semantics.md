@@ -19,6 +19,30 @@
 - Commit messages follow Conventional Commits (`feat:`, `refactor:`, `test:`, `fix:`).
 - Never use `unwrap()` or `expect()` on anything derived from user input. Return `anyhow::Result` or push a mismatch.
 
+## Testing Convention (overrides every per-task test instruction below)
+
+Added after Task 2 revealed the original approach was unsatisfiable. **Where any task below says to create a file under `pact-graphql-plugin/tests/`, add something to a `test_support` module, or references `pact_graphql_plugin::test_support::...`, ignore that instruction and follow this section instead.** The test *bodies* in each task are still correct and should be used verbatim; only their location and preamble change.
+
+These tests exercise crate-internal behaviour, so they are **unit tests, not integration tests**. Integration tests in `tests/` are a separate crate and cannot reach `pub(crate)` items — that is what forced the abandoned `pub` widening.
+
+- There is **no** `test_support` module. Nothing in `lib.rs` gains a `pub` re-export. `SchemaIndex`, `TypeRef`, `query_ast`, `response` and their methods stay `pub(crate)`.
+- Each module carries its tests in a sibling file, wired in at the bottom of the module:
+
+```rust
+#[cfg(test)]
+#[path = "schema_index_tests.rs"]
+mod tests;
+```
+
+- The test file starts with `use super::*;` plus `use crate::...;` where needed. It has direct access to every `pub(crate)` item.
+- Helpers the original plan put in `test_support` (`schema_index_for`, `canonical_document` wrappers, `diff_queries`, `diff_queries_with`, `validate_response_json`, `derive_rules`) become plain private `fn`s at the top of the test file that owns them. Keep their signatures as written — the test bodies call them.
+- File mapping:
+  - `src/schema_index.rs` → `src/schema_index_tests.rs` (Task 2)
+  - `src/query_ast.rs` → `src/query_ast_tests.rs` (Tasks 3, 4, 5)
+  - `src/response.rs` → `src/response_tests.rs` (Tasks 6, 7)
+- `pact-graphql-plugin/tests/` keeps only its pre-existing files. `plugin_flow.rs` genuinely is an integration test — it drives the plugin through the gRPC service trait — and Task 8 appends to it as written.
+- Run unit tests with `cargo test --lib`; run everything with `cargo test`.
+
 ---
 
 ## File Structure
@@ -27,8 +51,8 @@
 - `pact-graphql-plugin/src/schema_index.rs` — the schema model: `SchemaIndex`, `TypeInfo`, `FieldInfo`, `TypeRef`, `FieldCollection`, and the SDL registration logic. Moved verbatim from `graphql_payload.rs`, then extended.
 - `pact-graphql-plugin/src/query_ast.rs` — canonical AST printing, fragment inlining, structural document diff.
 - `pact-graphql-plugin/src/response.rs` — GraphQL response envelope parsing, validation against a selection set, schema-derived matching rules.
-- `pact-graphql-plugin/tests/query_ast_tests.rs` — integration tests for `query_ast`.
-- `pact-graphql-plugin/tests/response_tests.rs` — integration tests for `response`.
+- `pact-graphql-plugin/src/query_ast_tests.rs` — integration tests for `query_ast`.
+- `pact-graphql-plugin/src/response_tests.rs` — integration tests for `response`.
 
 **Modified:**
 - `pact-graphql-plugin/src/lib.rs` — declare the three new modules.
@@ -125,7 +149,7 @@ Response validation needs three things the model does not currently carry: the m
 
 **Files:**
 - Modify: `pact-graphql-plugin/src/schema_index.rs`
-- Test: `pact-graphql-plugin/tests/schema_index_tests.rs` (create)
+- Test: `pact-graphql-plugin/src/schema_index_tests.rs` (create)
 
 **Interfaces:**
 - Consumes: `SchemaIndex`, `TypeInfo`, `TypeRef`, `FieldInfo` from Task 1.
@@ -140,7 +164,7 @@ Response validation needs three things the model does not currently carry: the m
 
 - [ ] **Step 1: Write the failing test**
 
-Create `pact-graphql-plugin/tests/schema_index_tests.rs`:
+Create `pact-graphql-plugin/src/schema_index_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::schema_index_for;
@@ -351,7 +375,7 @@ Expected: PASS — the full suite, including everything from Task 1.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add pact-graphql-plugin/src/schema_index.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/tests/schema_index_tests.rs pact-graphql-plugin/src/graphql_payload.rs
+git add pact-graphql-plugin/src/schema_index.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/src/schema_index_tests.rs pact-graphql-plugin/src/graphql_payload.rs
 git commit -m "feat: carry enum members and field return types in the schema index"
 ```
 
@@ -364,7 +388,7 @@ Today `canonicalize_query` only dedents and trims, so a comment or a different i
 **Files:**
 - Create: `pact-graphql-plugin/src/query_ast.rs`
 - Modify: `pact-graphql-plugin/src/lib.rs`
-- Test: `pact-graphql-plugin/tests/query_ast_tests.rs` (create)
+- Test: `pact-graphql-plugin/src/query_ast_tests.rs` (create)
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
@@ -372,7 +396,7 @@ Today `canonicalize_query` only dedents and trims, so a comment or a different i
 
 - [ ] **Step 1: Write the failing test**
 
-Create `pact-graphql-plugin/tests/query_ast_tests.rs`:
+Create `pact-graphql-plugin/src/query_ast_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::canonical_document;
@@ -712,7 +736,7 @@ git commit -m "feat: canonicalise query documents through the AST"
 **Files:**
 - Modify: `pact-graphql-plugin/src/query_ast.rs`
 - Modify: `pact-graphql-plugin/src/graphql_payload.rs:175-226` (the `diff` method)
-- Test: `pact-graphql-plugin/tests/query_ast_tests.rs` (append)
+- Test: `pact-graphql-plugin/src/query_ast_tests.rs` (append)
 
 **Interfaces:**
 - Consumes: `parse_and_inline`, `selection_set_of`, `operation_name_of` from Task 3.
@@ -720,7 +744,7 @@ git commit -m "feat: canonicalise query documents through the AST"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `pact-graphql-plugin/tests/query_ast_tests.rs`:
+Append to `pact-graphql-plugin/src/query_ast_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::diff_queries;
@@ -1119,7 +1143,7 @@ git commit -m "feat: report query mismatches at the field level"
 - Modify: `pact-graphql-plugin/src/query_ast.rs`
 - Modify: `pact-graphql-plugin/src/interaction.rs:129-149` (`GraphqlPluginRequest`), `:12-35` (`GraphqlPluginConfig` and its wire struct)
 - Modify: `pact-graphql-plugin/src/graphql_payload.rs` (thread the mode into `diff`)
-- Test: `pact-graphql-plugin/tests/query_ast_tests.rs` (append)
+- Test: `pact-graphql-plugin/src/query_ast_tests.rs` (append)
 
 **Interfaces:**
 - Consumes: `diff_operations`, `QueryDiff` from Task 4.
@@ -1127,7 +1151,7 @@ git commit -m "feat: report query mismatches at the field level"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `pact-graphql-plugin/tests/query_ast_tests.rs`:
+Append to `pact-graphql-plugin/src/query_ast_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::{diff_queries_with, QueryMatching};
@@ -1293,7 +1317,7 @@ This is the objective-4 unlock. Given the schema, the query, and a response body
 **Files:**
 - Create: `pact-graphql-plugin/src/response.rs`
 - Modify: `pact-graphql-plugin/src/lib.rs`
-- Test: `pact-graphql-plugin/tests/response_tests.rs` (create)
+- Test: `pact-graphql-plugin/src/response_tests.rs` (create)
 
 **Interfaces:**
 - Consumes: `SchemaIndex`, `TypeRef`, `OperationKind` (Task 1/2); `parse_and_inline`, `selection_set_of` (Task 3); `collect_fields` — make it `pub(crate)` in `query_ast.rs`.
@@ -1301,7 +1325,7 @@ This is the objective-4 unlock. Given the schema, the query, and a response body
 
 - [ ] **Step 1: Write the failing test**
 
-Create `pact-graphql-plugin/tests/response_tests.rs`:
+Create `pact-graphql-plugin/src/response_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::validate_response_json;
@@ -1911,7 +1935,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pact-graphql-plugin/src/response.rs pact-graphql-plugin/src/query_ast.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/tests/response_tests.rs
+git add pact-graphql-plugin/src/response.rs pact-graphql-plugin/src/query_ast.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/src/response_tests.rs
 git commit -m "feat: validate GraphQL responses against schema and selection set"
 ```
 
@@ -1923,7 +1947,7 @@ A user who writes `status: "ACTIVE"` should get an enum regex rule for free, and
 
 **Files:**
 - Modify: `pact-graphql-plugin/src/response.rs`
-- Test: `pact-graphql-plugin/tests/response_tests.rs` (append)
+- Test: `pact-graphql-plugin/src/response_tests.rs` (append)
 
 **Interfaces:**
 - Consumes: everything from Task 6.
@@ -1931,7 +1955,7 @@ A user who writes `status: "ACTIVE"` should get an enum regex rule for free, and
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `pact-graphql-plugin/tests/response_tests.rs`:
+Append to `pact-graphql-plugin/src/response_tests.rs`:
 
 ```rust
 use pact_graphql_plugin::test_support::{derive_rules, DerivedRule};
@@ -2162,7 +2186,7 @@ Expected: PASS — all 18 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pact-graphql-plugin/src/response.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/tests/response_tests.rs
+git add pact-graphql-plugin/src/response.rs pact-graphql-plugin/src/lib.rs pact-graphql-plugin/src/response_tests.rs
 git commit -m "feat: derive matching rules from the GraphQL schema"
 ```
 
