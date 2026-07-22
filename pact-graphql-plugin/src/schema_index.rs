@@ -516,9 +516,7 @@ impl SchemaIndex {
         false
     }
 
-    // Not yet called from production code; exercised directly by the unit
-    // tests in `schema_index_tests.rs` as a forward-looking accessor for
-    // upcoming response-validation work.
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn enum_values(&self, type_name: &str) -> Option<&HashSet<String>> {
         match self.types.get(type_name) {
@@ -527,16 +525,19 @@ impl SchemaIndex {
         }
     }
 
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn is_enum(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Enum(_)))
     }
 
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn is_scalar(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Scalar))
     }
 
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn field_return_type(
         &self,
@@ -735,9 +736,7 @@ impl TypeRef {
     }
 
     /// Strips a single `NonNull` wrapper, if present.
-    // Not yet called from production code; exercised directly by the unit
-    // tests in `schema_index_tests.rs` as a forward-looking accessor for
-    // upcoming response-validation work.
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn unwrap_non_null(&self) -> &TypeRef {
         match self {
@@ -747,6 +746,7 @@ impl TypeRef {
     }
 
     /// Returns the item type when this is a list, ignoring any outer `NonNull`.
+    // TODO(task-6/7): remove this allow once response validation calls this.
     #[allow(dead_code)]
     pub(crate) fn as_list_item(&self) -> Option<&TypeRef> {
         match self.unwrap_non_null() {
