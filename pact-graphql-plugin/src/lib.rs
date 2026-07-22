@@ -2,6 +2,7 @@ pub mod encoder;
 pub mod graphql_payload;
 pub mod interaction;
 pub mod schema;
+pub(crate) mod schema_index;
 pub mod server;
 
 pub use graphql_payload::{GraphqlInlineSchema, GraphqlRequestPayload};
