@@ -95,6 +95,12 @@ enum __TypeKind {
   LIST
   NON_NULL
 }
+
+scalar ID
+scalar String
+scalar Int
+scalar Float
+scalar Boolean
 "#;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -105,7 +111,7 @@ pub(crate) enum OperationKind {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SchemaIndex {
+pub struct SchemaIndex {
     query_root: String,
     mutation_root: Option<String>,
     subscription_root: Option<String>,
@@ -261,20 +267,30 @@ impl SchemaIndex {
                     }
                 }
             },
-            TypeDefinition::Enum(enum_type) => match self.types.entry(enum_type.name.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert(TypeInfo::Enum);
-                }
-                Entry::Occupied(entry) => {
-                    if !matches!(entry.get(), TypeInfo::Enum) {
-                        bail!(
-                            "type `{}` redeclared as enum but previously defined as {}",
-                            enum_type.name,
-                            entry.get().kind()
-                        );
+            TypeDefinition::Enum(enum_type) => {
+                let values: HashSet<String> = enum_type
+                    .values
+                    .into_iter()
+                    .map(|value| value.name)
+                    .collect();
+                match self.types.entry(enum_type.name.clone()) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(TypeInfo::Enum(EnumTypeInfo { values }));
                     }
+                    Entry::Occupied(mut entry) => match entry.get_mut() {
+                        TypeInfo::Enum(existing) => {
+                            existing.values.extend(values);
+                        }
+                        other => {
+                            bail!(
+                                "type `{}` redeclared as enum but previously defined as {}",
+                                enum_type.name,
+                                other.kind()
+                            );
+                        }
+                    },
                 }
-            },
+            }
             TypeDefinition::InputObject(input) => match self.types.entry(input.name.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(TypeInfo::InputObject);
@@ -365,13 +381,20 @@ impl SchemaIndex {
                 let entry = self
                     .types
                     .entry(enum_ext.name.clone())
-                    .or_insert_with(|| TypeInfo::Enum);
-                if !matches!(entry, TypeInfo::Enum) {
-                    bail!(
-                        "type `{}` cannot be extended as enum because it was previously defined as {}",
-                        enum_ext.name,
-                        entry.kind()
-                    );
+                    .or_insert_with(|| TypeInfo::Enum(EnumTypeInfo::default()));
+                match entry {
+                    TypeInfo::Enum(existing) => {
+                        existing
+                            .values
+                            .extend(enum_ext.values.into_iter().map(|v| v.name));
+                    }
+                    other => {
+                        bail!(
+                            "type `{}` cannot be extended as enum because it was previously defined as {}",
+                            enum_ext.name,
+                            other.kind()
+                        );
+                    }
                 }
             }
             TypeExtension::InputObject(input_ext) => {
@@ -443,7 +466,7 @@ impl SchemaIndex {
             Some(TypeInfo::Object(_)) => Ok(HashSet::from([type_name.to_string()])),
             Some(TypeInfo::Interface(_)) => self.interface_runtime_types(type_name),
             Some(TypeInfo::Union(union)) => Ok(union.members.clone()),
-            Some(TypeInfo::Scalar) | Some(TypeInfo::Enum) | Some(TypeInfo::InputObject) => {
+            Some(TypeInfo::Scalar) | Some(TypeInfo::Enum(_)) | Some(TypeInfo::InputObject) => {
                 Ok(HashSet::new())
             }
             None => bail!("type `{}` not found in schema", type_name),
@@ -493,6 +516,30 @@ impl SchemaIndex {
         false
     }
 
+    pub fn enum_values(&self, type_name: &str) -> Option<&HashSet<String>> {
+        match self.types.get(type_name) {
+            Some(TypeInfo::Enum(info)) => Some(&info.values),
+            _ => None,
+        }
+    }
+
+    pub fn is_enum(&self, type_name: &str) -> bool {
+        matches!(self.types.get(type_name), Some(TypeInfo::Enum(_)))
+    }
+
+    pub fn is_scalar(&self, type_name: &str) -> bool {
+        matches!(self.types.get(type_name), Some(TypeInfo::Scalar))
+    }
+
+    pub fn field_return_type(
+        &self,
+        parent_type: &str,
+        field_name: &str,
+    ) -> Option<&TypeRef> {
+        let parent = self.types.get(parent_type)?;
+        self.field(parent, field_name).map(|info| &info.return_type)
+    }
+
     pub(crate) fn ensure_fragment_applicable(
         &self,
         parent_type: &str,
@@ -536,7 +583,7 @@ pub(crate) enum TypeInfo {
     Interface(InterfaceTypeInfo),
     Union(UnionTypeInfo),
     Scalar,
-    Enum,
+    Enum(EnumTypeInfo),
     InputObject,
 }
 
@@ -547,10 +594,15 @@ impl TypeInfo {
             TypeInfo::Interface(_) => "interface",
             TypeInfo::Union(_) => "union",
             TypeInfo::Scalar => "scalar",
-            TypeInfo::Enum => "enum",
+            TypeInfo::Enum(_) => "enum",
             TypeInfo::InputObject => "input object",
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct EnumTypeInfo {
+    pub(crate) values: HashSet<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -626,7 +678,7 @@ impl FieldCollection {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FieldInfo {
-    return_type: TypeRef,
+    pub(crate) return_type: TypeRef,
     pub(crate) arguments: HashMap<String, InputValueInfo>,
 }
 
@@ -657,22 +709,38 @@ impl FieldInfo {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum TypeRef {
+pub enum TypeRef {
     Named(String),
     List(Box<TypeRef>),
     NonNull(Box<TypeRef>),
 }
 
 impl TypeRef {
-    pub(crate) fn innermost_named(&self) -> Option<&str> {
+    pub fn innermost_named(&self) -> Option<&str> {
         match self {
             TypeRef::Named(name) => Some(name.as_str()),
             TypeRef::List(inner) | TypeRef::NonNull(inner) => inner.innermost_named(),
         }
     }
 
-    pub(crate) fn is_non_null(&self) -> bool {
+    pub fn is_non_null(&self) -> bool {
         matches!(self, TypeRef::NonNull(_))
+    }
+
+    /// Strips a single `NonNull` wrapper, if present.
+    pub fn unwrap_non_null(&self) -> &TypeRef {
+        match self {
+            TypeRef::NonNull(inner) => inner,
+            other => other,
+        }
+    }
+
+    /// Returns the item type when this is a list, ignoring any outer `NonNull`.
+    pub fn as_list_item(&self) -> Option<&TypeRef> {
+        match self.unwrap_non_null() {
+            TypeRef::List(inner) => Some(inner),
+            _ => None,
+        }
     }
 }
 
