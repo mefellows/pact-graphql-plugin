@@ -43,6 +43,14 @@ mod tests;
 - `pact-graphql-plugin/tests/` keeps only its pre-existing files. `plugin_flow.rs` genuinely is an integration test — it drives the plugin through the gRPC service trait — and Task 8 appends to it as written.
 - Run unit tests with `cargo test --lib`; run everything with `cargo test`.
 
+## Temporary `#[allow(dead_code)]` debt (must be repaid)
+
+Task 2's accessors have no production caller until Tasks 6 and 7 consume them, so the Task 2 fix pass put a narrow `#[allow(dead_code)]` with an explanatory comment on each of these six methods in `src/schema_index.rs`:
+
+`enum_values`, `is_enum`, `is_scalar`, `field_return_type`, `unwrap_non_null`, `as_list_item`
+
+**Task 6 and Task 7 must delete the `#[allow(dead_code)]` attribute and its comment from every method they wire into a real caller**, then confirm `cargo build` is still warning-free. By the end of Task 7 no `#[allow(dead_code)]` introduced by this plan may remain — grep for it as part of the Definition of Done. If a method still has no caller at that point, that is a signal it was not needed; delete the method rather than keeping the allow.
+
 ---
 
 ## File Structure
@@ -2632,6 +2640,7 @@ git commit -m "feat: wire GraphQL response matching into the plugin protocol"
 - A query that differs in one nested field produces exactly one mismatch, whose path names that field.
 - A response containing a field absent from the schema, absent from the selection set, of the wrong scalar type, or holding an invalid enum member is rejected at `configure_interaction` with a message naming the field.
 - Enum fields in the response carry a derived `regex` rule; other scalars carry a derived `type` rule.
+- `grep -rn '#\[allow(dead_code)\]' pact-graphql-plugin/src/` returns nothing.
 
 ## Out of Scope (follow-up plans)
 
