@@ -30,7 +30,7 @@ fn rejects_empty_query() {
 fn propagates_optional_fields_and_transport() {
     let (_dir, builder) = build_builder();
     let req = GraphqlPluginRequest {
-        query_document: "query { ping }".into(),
+        query_document: "query PingQuery { ping }".into(),
         operation_name: Some("PingQuery".into()),
         variables_json: Some(r#"{"id": 1}"#.into()),
         transport: Transport::QueryString,
@@ -39,7 +39,8 @@ fn propagates_optional_fields_and_transport() {
 
     let config = builder.build(req.clone()).unwrap();
 
-    assert_eq!(config.query_document, req.query_document);
+    // The stored document is the canonical form, not the raw input.
+    assert_eq!(config.query_document, "query PingQuery {\n  ping\n}");
     assert_eq!(config.operation_name, req.operation_name);
     assert_eq!(config.variables_json.as_deref(), Some("{\"id\":1}"));
     assert_eq!(config.transport, req.transport);
@@ -345,18 +346,15 @@ fn fails_when_fragments_form_cycle() {
         })
         .unwrap_err();
 
-    let err_str = err.to_string();
-    assert!(
-        err_str.contains("GraphQL query validation failed"),
-        "unexpected top-level error: {}",
-        err_str
-    );
-    let chain: Vec<String> = err.chain().skip(1).map(|cause| cause.to_string()).collect();
+    // Canonicalisation inlines fragment spreads, so it reaches the cycle before
+    // schema validation does. It reports the cycle in the same form the
+    // validation path would, so the diagnostic is identical either way.
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
     assert!(
         chain
             .iter()
             .any(|msg| msg.contains("fragment `NodeFields` forms a cycle")),
-        "missing detailed validation error. chain: {:?}",
+        "missing fragment cycle diagnostic. chain: {:?}",
         chain
     );
 }

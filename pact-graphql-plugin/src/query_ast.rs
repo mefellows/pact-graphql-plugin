@@ -6,8 +6,6 @@ use graphql_parser::query::{
     SelectionSet,
 };
 
-const MAX_FRAGMENT_DEPTH: usize = 64;
-
 /// Parses `query`, selects the requested operation, inlines every fragment
 /// spread it reaches, and returns the operation as an owned AST node.
 pub(crate) fn parse_and_inline(
@@ -29,7 +27,7 @@ pub(crate) fn parse_and_inline(
 
     let mut operation = select_operation(&document, operation_name)?;
     let selection_set = selection_set_mut(&mut operation);
-    inline_selection_set(selection_set, &fragments, 0)?;
+    inline_selection_set(selection_set, &fragments, &mut Vec::new())?;
 
     Ok(operation)
 }
@@ -89,7 +87,7 @@ pub(crate) fn operation_name_of<'a>(
     }
 }
 
-// Consumed by Task 4's `diff_operations`; not yet called within Task 3.
+// TODO(task-4): remove this allow once diff_operations calls this.
 #[allow(dead_code)]
 pub(crate) fn selection_set_of<'a>(
     operation: &'a OperationDefinition<'static, String>,
@@ -116,25 +114,39 @@ fn selection_set_mut<'a>(
 /// Replaces every `...Name` spread with the fragment's own selections, in place.
 /// Inline fragments (`... on Type`) are left alone — their type condition is
 /// semantically meaningful and cannot be flattened away.
+///
+/// `stack` holds the fragment names currently being expanded, so a spread that
+/// re-enters a fragment already on the stack is reported as a cycle rather than
+/// recursing forever. The message matches `graphql_payload::detect_fragment_cycle`
+/// so a cyclic document reads the same whichever path reaches it first.
 fn inline_selection_set(
     selection_set: &mut SelectionSet<'static, String>,
     fragments: &HashMap<String, FragmentDefinition<'static, String>>,
-    depth: usize,
+    stack: &mut Vec<String>,
 ) -> anyhow::Result<()> {
-    if depth > MAX_FRAGMENT_DEPTH {
-        bail!("fragment spreads nested more than {MAX_FRAGMENT_DEPTH} deep; possible cycle");
-    }
-
     let mut expanded: Vec<Selection<'static, String>> =
         Vec::with_capacity(selection_set.items.len());
 
     for selection in selection_set.items.drain(..) {
         match selection {
             Selection::Field(mut field) => {
-                inline_selection_set(&mut field.selection_set, fragments, depth + 1)?;
+                inline_selection_set(&mut field.selection_set, fragments, stack)?;
                 expanded.push(Selection::Field(field));
             }
             Selection::FragmentSpread(spread) => {
+                if let Some(position) =
+                    stack.iter().position(|name| name == &spread.fragment_name)
+                {
+                    let mut cycle: Vec<&str> =
+                        stack[position..].iter().map(String::as_str).collect();
+                    cycle.push(spread.fragment_name.as_str());
+                    bail!(
+                        "fragment `{}` forms a cycle: {}",
+                        spread.fragment_name,
+                        cycle.join(" -> ")
+                    );
+                }
+
                 let fragment = fragments.get(&spread.fragment_name).ok_or_else(|| {
                     anyhow!(
                         "fragment `{}` is not defined in the document",
@@ -142,11 +154,14 @@ fn inline_selection_set(
                     )
                 })?;
                 let mut nested = fragment.selection_set.clone();
-                inline_selection_set(&mut nested, fragments, depth + 1)?;
+                stack.push(spread.fragment_name.clone());
+                let result = inline_selection_set(&mut nested, fragments, stack);
+                stack.pop();
+                result?;
                 expanded.extend(nested.items);
             }
             Selection::InlineFragment(mut fragment) => {
-                inline_selection_set(&mut fragment.selection_set, fragments, depth + 1)?;
+                inline_selection_set(&mut fragment.selection_set, fragments, stack)?;
                 expanded.push(Selection::InlineFragment(fragment));
             }
         }

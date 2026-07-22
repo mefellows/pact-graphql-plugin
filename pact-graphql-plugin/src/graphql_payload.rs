@@ -81,7 +81,7 @@ impl CanonicalGraphqlRequest {
             schema_sdl,
         } = req;
 
-        query_document = canonicalize_query(&query_document, operation_name.as_deref());
+        query_document = canonicalize_query(&query_document, operation_name.as_deref())?;
         let variables_json = canonicalize_variables(variables_json)?;
 
         let canonical_schema = schema_sdl
@@ -127,7 +127,7 @@ impl CanonicalGraphqlRequest {
             bail!("query_document is required");
         }
 
-        let query_document = canonicalize_query(&raw_query, operation_name.as_deref());
+        let query_document = canonicalize_query(&raw_query, operation_name.as_deref())?;
         let variables_json = canonicalize_variables(raw_variables)?;
 
         let canonical_schema = resolve_schema_sdl_indicator(schema_base64, registry)?;
@@ -764,15 +764,21 @@ fn detect_fragment_cycle(stack: &[&str], next: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Canonical text form of a query document. Falls back to a plain dedent when
-/// the document does not parse, so that malformed input still produces a
-/// comparable string rather than an error at this layer — parse errors are
-/// reported by the validation path with far better messages.
-pub(crate) fn canonicalize_query(input: &str, operation_name: Option<&str>) -> String {
-    match crate::query_ast::canonical_document(input, operation_name) {
-        Ok(canonical) => canonical,
-        Err(_) => dedent_and_trim(input),
+/// Canonical text form of a query document.
+///
+/// A document that is not syntactically valid GraphQL keeps its dedented raw
+/// text: the validation path reports syntax errors with far better messages
+/// than we could here. Every other failure — an unknown operation name, an
+/// ambiguous multi-operation document, an unresolvable fragment — is a real
+/// error the caller must see, so it propagates.
+pub(crate) fn canonicalize_query(
+    input: &str,
+    operation_name: Option<&str>,
+) -> anyhow::Result<String> {
+    if graphql_parser::query::parse_query::<String>(input).is_err() {
+        return Ok(dedent_and_trim(input));
     }
+    crate::query_ast::canonical_document(input, operation_name)
 }
 
 fn strip_indent(line: &str, indent: usize) -> String {
