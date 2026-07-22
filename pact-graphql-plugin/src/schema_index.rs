@@ -111,7 +111,7 @@ pub(crate) enum OperationKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct SchemaIndex {
+pub(crate) struct SchemaIndex {
     query_root: String,
     mutation_root: Option<String>,
     subscription_root: Option<String>,
@@ -516,22 +516,29 @@ impl SchemaIndex {
         false
     }
 
-    pub fn enum_values(&self, type_name: &str) -> Option<&HashSet<String>> {
+    // Not yet called from production code; exercised directly by the unit
+    // tests in `schema_index_tests.rs` as a forward-looking accessor for
+    // upcoming response-validation work.
+    #[allow(dead_code)]
+    pub(crate) fn enum_values(&self, type_name: &str) -> Option<&HashSet<String>> {
         match self.types.get(type_name) {
             Some(TypeInfo::Enum(info)) => Some(&info.values),
             _ => None,
         }
     }
 
-    pub fn is_enum(&self, type_name: &str) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_enum(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Enum(_)))
     }
 
-    pub fn is_scalar(&self, type_name: &str) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_scalar(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Scalar))
     }
 
-    pub fn field_return_type(
+    #[allow(dead_code)]
+    pub(crate) fn field_return_type(
         &self,
         parent_type: &str,
         field_name: &str,
@@ -709,26 +716,30 @@ impl FieldInfo {
 }
 
 #[derive(Clone, Debug)]
-pub enum TypeRef {
+pub(crate) enum TypeRef {
     Named(String),
     List(Box<TypeRef>),
     NonNull(Box<TypeRef>),
 }
 
 impl TypeRef {
-    pub fn innermost_named(&self) -> Option<&str> {
+    pub(crate) fn innermost_named(&self) -> Option<&str> {
         match self {
             TypeRef::Named(name) => Some(name.as_str()),
             TypeRef::List(inner) | TypeRef::NonNull(inner) => inner.innermost_named(),
         }
     }
 
-    pub fn is_non_null(&self) -> bool {
+    pub(crate) fn is_non_null(&self) -> bool {
         matches!(self, TypeRef::NonNull(_))
     }
 
     /// Strips a single `NonNull` wrapper, if present.
-    pub fn unwrap_non_null(&self) -> &TypeRef {
+    // Not yet called from production code; exercised directly by the unit
+    // tests in `schema_index_tests.rs` as a forward-looking accessor for
+    // upcoming response-validation work.
+    #[allow(dead_code)]
+    pub(crate) fn unwrap_non_null(&self) -> &TypeRef {
         match self {
             TypeRef::NonNull(inner) => inner,
             other => other,
@@ -736,7 +747,8 @@ impl TypeRef {
     }
 
     /// Returns the item type when this is a list, ignoring any outer `NonNull`.
-    pub fn as_list_item(&self) -> Option<&TypeRef> {
+    #[allow(dead_code)]
+    pub(crate) fn as_list_item(&self) -> Option<&TypeRef> {
         match self.unwrap_non_null() {
             TypeRef::List(inner) => Some(inner),
             _ => None,
@@ -774,3 +786,7 @@ impl From<SchemaInputValue<'static, String>> for InputValueInfo {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "schema_index_tests.rs"]
+mod tests;

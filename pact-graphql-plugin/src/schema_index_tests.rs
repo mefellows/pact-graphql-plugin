@@ -1,10 +1,14 @@
-use pact_graphql_plugin::test_support::schema_index_for;
+use super::*;
 
 const SDL: &str = r#"
 type Query { product(id: ID!): Product }
 type Product { id: ID!, name: String, status: ProductStatus!, tags: [String!]! }
 enum ProductStatus { ACTIVE ARCHIVED }
 "#;
+
+fn schema_index_for(sdl: &str) -> anyhow::Result<SchemaIndex> {
+    SchemaIndex::from_sdl(sdl)
+}
 
 #[test]
 fn exposes_enum_values() {
