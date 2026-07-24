@@ -52,31 +52,27 @@ describe('GraphQL pact', () => {
       query,
       variables: { id: '10' },
       operationName: 'GetProduct',
+      response: {
+        data: {
+          product: {
+            id: '10',
+            name: 'product name',
+            status: 'ACTIVE',
+          },
+        },
+      },
     });
 
-    await responseInteraction
-      .willRespondWith(200, (builder) => {
-        builder.headers({ 'content-type': 'application/json' });
-        builder.jsonBody({
-          data: {
-            product: {
-              id: '10',
-              name: 'product name',
-              status: 'ACTIVE',
-            },
-          },
-        });
-      })
-      .executeTest(async (mockServer) => {
-        await postGraphqlRequest(
-          mockServer,
-          graphqlRequestBody({
-            query,
-            variables: { id: '10' },
-            operationName: 'GetProduct',
-          }),
-        );
-      });
+    await responseInteraction.executeTest(async (mockServer) => {
+      await postGraphqlRequest(
+        mockServer,
+        graphqlRequestBody({
+          query,
+          variables: { id: '10' },
+          operationName: 'GetProduct',
+        }),
+      );
+    });
   });
 
   describe('positive cases', () => {
@@ -127,62 +123,58 @@ describe('GraphQL pact', () => {
         schema,
         query: nestedQuery,
         operationName: 'ProductsByStatus',
+        response: {
+          data: {
+            products: [
+              {
+                id: 'prod-1',
+                name: 'Trail Backpack',
+                status: 'ACTIVE',
+                category: {
+                  id: 'cat-1',
+                  name: 'Bags',
+                },
+                variants: [
+                  {
+                    id: 'var-1',
+                    sku: 'SKU-TRAIL-001',
+                    price: {
+                      list: {
+                        amount: 129.99,
+                        currency: 'USD',
+                      },
+                    },
+                    inventory: {
+                      quantity: 42,
+                      updatedAt: '2026-03-08T12:00:00Z',
+                    },
+                  },
+                ],
+                reviews: [
+                  {
+                    id: 'rev-1',
+                    rating: 'FIVE',
+                    author: {
+                      id: 'cust-1',
+                      name: 'Alex',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
       });
 
-      await responseInteraction
-        .willRespondWith(200, (builder) => {
-          builder.headers({ 'content-type': 'application/json' });
-          builder.jsonBody({
-            data: {
-              products: [
-                {
-                  id: 'prod-1',
-                  name: 'Trail Backpack',
-                  status: 'ACTIVE',
-                  category: {
-                    id: 'cat-1',
-                    name: 'Bags',
-                  },
-                  variants: [
-                    {
-                      id: 'var-1',
-                      sku: 'SKU-TRAIL-001',
-                      price: {
-                        list: {
-                          amount: 129.99,
-                          currency: 'USD',
-                        },
-                      },
-                      inventory: {
-                        quantity: 42,
-                        updatedAt: '2026-03-08T12:00:00Z',
-                      },
-                    },
-                  ],
-                  reviews: [
-                    {
-                      id: 'rev-1',
-                      rating: 'FIVE',
-                      author: {
-                        id: 'cust-1',
-                        name: 'Alex',
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          });
-        })
-        .executeTest(async (mockServer) => {
-          await postGraphqlRequest(
-            mockServer,
-            graphqlRequestBody({
-              query: nestedQuery,
-              operationName: 'ProductsByStatus',
-            }),
-          );
-        });
+      await responseInteraction.executeTest(async (mockServer) => {
+        await postGraphqlRequest(
+          mockServer,
+          graphqlRequestBody({
+            query: nestedQuery,
+            operationName: 'ProductsByStatus',
+          }),
+        );
+      });
     });
 
     it('supports placeOrder mutation', async () => {
@@ -244,67 +236,63 @@ describe('GraphQL pact', () => {
         schema,
         query: mutation,
         operationName: 'PlaceOrder',
+        response: {
+          data: {
+            placeOrder: {
+              id: 'order-1',
+              status: 'PLACED',
+              total: {
+                amount: 289.97,
+                currency: 'USD',
+              },
+              lines: [
+                {
+                  quantity: 2,
+                  product: {
+                    id: 'prod-1',
+                    name: 'Trail Backpack',
+                  },
+                  variant: {
+                    id: 'var-1',
+                    sku: 'SKU-TRAIL-001',
+                  },
+                },
+                {
+                  quantity: 1,
+                  product: {
+                    id: 'prod-2',
+                    name: 'Weekender Tote',
+                  },
+                  variant: {
+                    id: 'var-2',
+                    sku: 'SKU-WEEK-004',
+                  },
+                },
+              ],
+              shipments: [
+                {
+                  id: 'ship-1',
+                  status: 'PENDING',
+                  address: {
+                    city: 'San Francisco',
+                    country: 'US',
+                  },
+                },
+              ],
+            },
+          },
+        },
       });
 
-      await responseInteraction
-        .willRespondWith(200, (builder) => {
-          builder.headers({ 'content-type': 'application/json' });
-          builder.jsonBody({
-            data: {
-              placeOrder: {
-                id: 'order-1',
-                status: 'PLACED',
-                total: {
-                  amount: 289.97,
-                  currency: 'USD',
-                },
-                lines: [
-                  {
-                    quantity: 2,
-                    product: {
-                      id: 'prod-1',
-                      name: 'Trail Backpack',
-                    },
-                    variant: {
-                      id: 'var-1',
-                      sku: 'SKU-TRAIL-001',
-                    },
-                  },
-                  {
-                    quantity: 1,
-                    product: {
-                      id: 'prod-2',
-                      name: 'Weekender Tote',
-                    },
-                    variant: {
-                      id: 'var-2',
-                      sku: 'SKU-WEEK-004',
-                    },
-                  },
-                ],
-                shipments: [
-                  {
-                    id: 'ship-1',
-                    status: 'PENDING',
-                    address: {
-                      city: 'San Francisco',
-                      country: 'US',
-                    },
-                  },
-                ],
-              },
-            },
-          });
-        })
-        .executeTest(async (mockServer) => {
-          await postGraphqlRequest(
-            mockServer,
-            graphqlRequestBody({
-              query: mutation,
-              operationName: 'PlaceOrder',
-            }),
-          );
-        });
+      await responseInteraction.executeTest(async (mockServer) => {
+        await postGraphqlRequest(
+          mockServer,
+          graphqlRequestBody({
+            query: mutation,
+            operationName: 'PlaceOrder',
+          }),
+        );
+      });
     });
 
     it('accepts subscription document validation', async () => {
