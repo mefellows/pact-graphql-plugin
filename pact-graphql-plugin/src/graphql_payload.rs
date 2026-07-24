@@ -16,6 +16,7 @@ use urlencoding::decode;
 
 use crate::encoder::Transport;
 use crate::interaction::GraphqlPluginRequest;
+use crate::query_ast::QueryMatching;
 use crate::schema_index::{FieldInfo, OperationKind, SchemaIndex, TypeInfo};
 use crate::SchemaRegistry;
 
@@ -40,6 +41,7 @@ pub struct GraphqlInlineSchema {
 pub struct CanonicalGraphqlRequest {
     pub payload: GraphqlRequestPayload,
     pub inline_schema: Option<GraphqlInlineSchema>,
+    pub query_matching: QueryMatching,
 }
 
 /// Differentiates two canonical requests using JSON pointer paths.
@@ -79,6 +81,7 @@ impl CanonicalGraphqlRequest {
             variables_json,
             transport,
             schema_sdl,
+            query_matching,
         } = req;
 
         query_document = canonicalize_query(&query_document, operation_name.as_deref())?;
@@ -107,6 +110,7 @@ impl CanonicalGraphqlRequest {
                 transport,
             },
             inline_schema,
+            query_matching,
         })
     }
 
@@ -116,6 +120,7 @@ impl CanonicalGraphqlRequest {
         expected_transport: Transport,
         schema_base64: Option<&str>,
         registry: &SchemaRegistry,
+        query_matching: QueryMatching,
     ) -> anyhow::Result<Self> {
         let transport = detect_transport(content_type, expected_transport);
         let (raw_query, operation_name, raw_variables) = match transport {
@@ -150,6 +155,7 @@ impl CanonicalGraphqlRequest {
                 transport,
             },
             inline_schema,
+            query_matching,
         })
     }
 
@@ -171,41 +177,64 @@ impl CanonicalGraphqlRequest {
     pub fn diff(&self, other: &CanonicalGraphqlRequest) -> Vec<RequestMismatch> {
         let mut mismatches = Vec::new();
 
-        match (
-            crate::query_ast::parse_and_inline(
+        if self.query_matching == QueryMatching::Exact {
+            for diff in crate::query_ast::diff_exact(
                 &self.payload.query_document,
-                self.payload.operation_name.as_deref(),
-            ),
-            crate::query_ast::parse_and_inline(
                 &other.payload.query_document,
-                other.payload.operation_name.as_deref(),
-            ),
-        ) {
-            (Ok(expected_op), Ok(actual_op)) => {
-                for diff in crate::query_ast::diff_operations(&expected_op, &actual_op) {
-                    let path = if diff.path.is_empty() {
-                        "/payload/query_document".to_string()
-                    } else {
-                        format!("/payload/query_document/{}", diff.path.replace('.', "/"))
-                    };
-                    mismatches.push(RequestMismatch::new(
-                        &path,
-                        diff.expected,
-                        diff.actual,
-                        &diff.description,
-                    ));
-                }
+            ) {
+                let path = if diff.path.is_empty() {
+                    "/payload/query_document".to_string()
+                } else {
+                    format!("/payload/query_document/{}", diff.path.replace('.', "/"))
+                };
+                mismatches.push(RequestMismatch::new(
+                    &path,
+                    diff.expected,
+                    diff.actual,
+                    &diff.description,
+                ));
             }
-            // If either document fails to parse here, fall back to the text comparison
-            // so we still report *something* rather than silently passing.
-            _ => {
-                if self.payload.query_document != other.payload.query_document {
-                    mismatches.push(RequestMismatch::new(
-                        "/payload/query_document",
-                        self.payload.query_document.clone(),
-                        other.payload.query_document.clone(),
-                        "GraphQL query document differs",
-                    ));
+        } else {
+            match (
+                crate::query_ast::parse_and_inline(
+                    &self.payload.query_document,
+                    self.payload.operation_name.as_deref(),
+                ),
+                crate::query_ast::parse_and_inline(
+                    &other.payload.query_document,
+                    other.payload.operation_name.as_deref(),
+                ),
+            ) {
+                (Ok(expected_op), Ok(actual_op)) => {
+                    for diff in crate::query_ast::diff_operations_with(
+                        &expected_op,
+                        &actual_op,
+                        self.query_matching,
+                    ) {
+                        let path = if diff.path.is_empty() {
+                            "/payload/query_document".to_string()
+                        } else {
+                            format!("/payload/query_document/{}", diff.path.replace('.', "/"))
+                        };
+                        mismatches.push(RequestMismatch::new(
+                            &path,
+                            diff.expected,
+                            diff.actual,
+                            &diff.description,
+                        ));
+                    }
+                }
+                // If either document fails to parse here, fall back to the text comparison
+                // so we still report *something* rather than silently passing.
+                _ => {
+                    if self.payload.query_document != other.payload.query_document {
+                        mismatches.push(RequestMismatch::new(
+                            "/payload/query_document",
+                            self.payload.query_document.clone(),
+                            other.payload.query_document.clone(),
+                            "GraphQL query document differs",
+                        ));
+                    }
                 }
             }
         }

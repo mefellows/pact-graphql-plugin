@@ -158,6 +158,7 @@ impl PactPlugin for GraphqlPlugin {
         let expected = CanonicalGraphqlRequest {
             payload: config.request.clone(),
             inline_schema: config.inline_schema.clone(),
+            query_matching: config.query_matching,
         };
 
         let actual_body =
@@ -186,6 +187,7 @@ impl PactPlugin for GraphqlPlugin {
             config.transport.clone(),
             schema_indicator.as_deref(),
             registry.as_ref(),
+            config.query_matching,
         ) {
             Ok(actual) => actual,
             Err(err) => {
@@ -292,6 +294,7 @@ impl PactPlugin for GraphqlPlugin {
         let expected = CanonicalGraphqlRequest {
             payload: config.request.clone(),
             inline_schema: config.inline_schema.clone(),
+            query_matching: config.query_matching,
         };
 
         let interaction_data = req
@@ -323,6 +326,7 @@ impl PactPlugin for GraphqlPlugin {
             config.transport.clone(),
             schema_indicator.as_deref(),
             registry.as_ref(),
+            config.query_matching,
         ) {
             Ok(actual) => actual,
             Err(err) => {
@@ -646,6 +650,7 @@ mod tests {
                 variables_json: Some("{}".into()),
                 transport: Transport::JsonBody,
             },
+            query_matching: Default::default(),
         };
         let struct_value = config_to_struct(&config).unwrap();
         let value = proto_struct_to_json(&struct_value);
@@ -710,6 +715,7 @@ mod tests {
                 variables_json: None,
                 transport: Transport::JsonBody,
             },
+            query_matching: Default::default(),
         };
         let json_value = serde_json::to_value(&config).unwrap();
         assert_eq!(
@@ -1085,6 +1091,7 @@ mod tests {
                     "#
                     .into(),
                 ),
+                ..GraphqlPluginRequest::default()
             })
             .expect("canonical config")
     }

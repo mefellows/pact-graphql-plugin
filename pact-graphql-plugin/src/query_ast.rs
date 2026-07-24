@@ -5,6 +5,7 @@ use graphql_parser::query::{
     parse_query, Definition, Document, Field as QueryField, FragmentDefinition,
     OperationDefinition, Selection, SelectionSet,
 };
+use serde::{Deserialize, Serialize};
 
 /// Parses `query`, selects the requested operation, inlines every fragment
 /// spread it reaches, and returns the operation as an owned AST node.
@@ -376,6 +377,47 @@ fn collect_fields_into<'a>(
             // Spreads were inlined by `parse_and_inline` before we get here.
             Selection::FragmentSpread(_) => {}
         }
+    }
+}
+
+/// Controls how strictly the actual query document is compared to the
+/// expected one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryMatching {
+    /// Byte-for-byte comparison of the canonical text.
+    Exact,
+    /// AST comparison: formatting and fragment structure are ignored.
+    #[default]
+    Semantic,
+    /// Like `Semantic`, but the actual query may omit expected fields.
+    Subset,
+}
+
+pub(crate) fn diff_exact(expected: &str, actual: &str) -> Vec<QueryDiff> {
+    if expected.trim() == actual.trim() {
+        return Vec::new();
+    }
+    vec![QueryDiff::new(
+        "",
+        expected.trim(),
+        actual.trim(),
+        "GraphQL query document differs byte-for-byte (queryMatching: exact)",
+    )]
+}
+
+pub(crate) fn diff_operations_with(
+    expected: &OperationDefinition<'static, String>,
+    actual: &OperationDefinition<'static, String>,
+    mode: QueryMatching,
+) -> Vec<QueryDiff> {
+    let diffs = diff_operations(expected, actual);
+    match mode {
+        QueryMatching::Subset => diffs
+            .into_iter()
+            .filter(|diff| !diff.description.contains("is not selected by the actual query"))
+            .collect(),
+        _ => diffs,
     }
 }
 

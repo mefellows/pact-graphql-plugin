@@ -10,6 +10,20 @@ fn diff_queries(
     Ok(diff_operations(&expected, &actual))
 }
 
+fn diff_queries_with(
+    expected: &str,
+    actual: &str,
+    operation_name: Option<&str>,
+    mode: QueryMatching,
+) -> anyhow::Result<Vec<QueryDiff>> {
+    if mode == QueryMatching::Exact {
+        return Ok(diff_exact(expected, actual));
+    }
+    let expected_op = parse_and_inline(expected, operation_name)?;
+    let actual_op = parse_and_inline(actual, operation_name)?;
+    Ok(diff_operations_with(&expected_op, &actual_op, mode))
+}
+
 #[test]
 fn identical_queries_produce_no_diff() {
     let diffs = diff_queries(
@@ -196,4 +210,40 @@ fn allows_the_same_fragment_spread_twice_in_sequence() {
     )
     .expect("sibling spreads of the same fragment are legal");
     assert_eq!(out.matches("id").count(), 2, "both spreads expanded: {out}");
+}
+
+const EXPECTED: &str = "query Q { product { id name status } }";
+const FEWER: &str = "query Q { product { id name } }";
+const MORE: &str = "query Q { product { id name status category { id } } }";
+
+#[test]
+fn subset_allows_the_actual_query_to_request_fewer_fields() {
+    let diffs = diff_queries_with(EXPECTED, FEWER, Some("Q"), QueryMatching::Subset).unwrap();
+    assert!(diffs.is_empty(), "got {diffs:#?}");
+}
+
+#[test]
+fn subset_still_rejects_unexpected_fields() {
+    let diffs = diff_queries_with(EXPECTED, MORE, Some("Q"), QueryMatching::Subset).unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product.category");
+}
+
+#[test]
+fn semantic_rejects_fewer_fields() {
+    let diffs = diff_queries_with(EXPECTED, FEWER, Some("Q"), QueryMatching::Semantic).unwrap();
+    assert_eq!(diffs.len(), 1, "got {diffs:#?}");
+    assert_eq!(diffs[0].path, "product.status");
+}
+
+#[test]
+fn exact_rejects_a_reformatted_but_equivalent_query() {
+    let reformatted = "query Q {\n  product {\n    id\n    name\n    status\n  }\n}";
+    let semantic =
+        diff_queries_with(EXPECTED, reformatted, Some("Q"), QueryMatching::Semantic).unwrap();
+    assert!(semantic.is_empty(), "semantic tolerates formatting: {semantic:#?}");
+
+    let exact = diff_queries_with(EXPECTED, reformatted, Some("Q"), QueryMatching::Exact).unwrap();
+    assert_eq!(exact.len(), 1, "exact does not: {exact:#?}");
+    assert!(exact[0].description.contains("byte-for-byte"), "{}", exact[0].description);
 }

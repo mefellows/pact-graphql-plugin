@@ -47,6 +47,7 @@ async fn configure_and_generate_json_body() {
         variables_json: Some(r#"{"id":1}"#.into()),
         transport: pact_graphql_plugin::encoder::Transport::JsonBody,
         schema_sdl: Some("type Query { ping: String }".into()),
+        ..Default::default()
     };
 
     let configure_request = make_contents_config(&req);

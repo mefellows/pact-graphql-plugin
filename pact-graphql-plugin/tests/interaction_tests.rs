@@ -35,6 +35,7 @@ fn propagates_optional_fields_and_transport() {
         variables_json: Some(r#"{"id": 1}"#.into()),
         transport: Transport::QueryString,
         schema_sdl: None,
+        ..Default::default()
     };
 
     let config = builder.build(req.clone()).unwrap();

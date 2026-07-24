@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::encoder::Transport;
+use crate::query_ast::QueryMatching;
 use crate::{SchemaRef, SchemaRegistry};
 
 pub use crate::graphql_payload::{
@@ -19,6 +20,7 @@ pub struct GraphqlPluginConfig {
     pub schema_inline_base64: Option<String>,
     pub inline_schema: Option<GraphqlInlineSchema>,
     pub request: GraphqlRequestPayload,
+    pub query_matching: QueryMatching,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +34,8 @@ struct GraphqlPluginConfigWire {
     pub schema_inline_base64: Option<String>,
     pub inline_schema: Option<GraphqlInlineSchema>,
     pub request: Option<GraphqlRequestPayload>,
+    #[serde(default)]
+    pub query_matching: Option<QueryMatching>,
 }
 
 impl From<&GraphqlPluginConfig> for GraphqlPluginConfigWire {
@@ -51,6 +55,7 @@ impl From<&GraphqlPluginConfig> for GraphqlPluginConfigWire {
             schema_inline_base64,
             inline_schema: config.inline_schema.clone(),
             request: Some(config.request.clone()),
+            query_matching: Some(config.query_matching),
         }
     }
 }
@@ -82,6 +87,7 @@ impl<'de> Deserialize<'de> for GraphqlPluginConfig {
             mut schema_inline_base64,
             mut inline_schema,
             request,
+            query_matching,
         } = wire;
 
         let request = request.unwrap_or_else(|| GraphqlRequestPayload {
@@ -122,6 +128,7 @@ impl<'de> Deserialize<'de> for GraphqlPluginConfig {
             schema_inline_base64,
             inline_schema,
             request,
+            query_matching: query_matching.unwrap_or_default(),
         })
     }
 }
@@ -134,6 +141,8 @@ pub struct GraphqlPluginRequest {
     #[serde(default)]
     pub transport: Transport,
     pub schema_sdl: Option<String>,
+    #[serde(default)]
+    pub query_matching: QueryMatching,
 }
 
 impl Default for GraphqlPluginRequest {
@@ -144,6 +153,7 @@ impl Default for GraphqlPluginRequest {
             variables_json: None,
             transport: Transport::JsonBody,
             schema_sdl: None,
+            query_matching: QueryMatching::default(),
         }
     }
 }
@@ -162,6 +172,7 @@ impl GraphqlInteractionBuilder {
     }
 
     pub fn build(&self, req: GraphqlPluginRequest) -> anyhow::Result<GraphqlPluginConfig> {
+        let query_matching = req.query_matching;
         let canonical = CanonicalGraphqlRequest::from_interaction_config(req, &self.registry)?;
 
         let canonical_schema_sdl = canonical.inline_schema_sdl()?;
@@ -186,6 +197,7 @@ impl GraphqlInteractionBuilder {
             schema_inline_base64,
             inline_schema,
             request,
+            query_matching,
         })
     }
 }
