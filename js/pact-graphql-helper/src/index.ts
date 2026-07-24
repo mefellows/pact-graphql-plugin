@@ -1,6 +1,7 @@
 import type {
   GraphqlHttpInteractionBuilder,
   GraphqlHttpRequestBuilder,
+  GraphqlHttpResponseBuilder,
   GraphqlAsyncMessageWithPluginContents,
   GraphqlMessageOptions,
   GraphqlMessagePactBuilder,
@@ -8,6 +9,8 @@ import type {
   GraphqlTransport,
   PluginCapableInteractionBuilder,
 } from './types';
+
+const GRAPHQL_RESPONSE_CONTENT_TYPE = 'application/graphql-response';
 
 function normalizeQuery(query: string): string {
   const lines = query.replace(/\r?\n/g, '\n').split('\n');
@@ -126,12 +129,40 @@ export async function graphqlHttpInteraction<T = unknown>(
   const pluginInteraction = await graphqlInteraction(interaction, options);
   const configuration = buildGraphqlConfiguration(options);
 
-  return pluginInteraction.withRequest(
+  const withRequestResult = pluginInteraction.withRequest(
     'POST',
     '/graphql',
     (builder: GraphqlHttpRequestBuilder) => {
       builder.headers({ 'content-type': 'application/graphql' });
       builder.pluginContents('application/graphql', JSON.stringify(configuration));
+    },
+  );
+
+  if (options.response === undefined) {
+    return withRequestResult;
+  }
+
+  // The response-side configure call is a *separate* invocation that shares no state with the
+  // request-side one, so it must carry the same canonical query/operation/schema fields itself —
+  // otherwise selection-set validation would compare against the wrong document.
+  const responseConfiguration = {
+    query_document: configuration.query_document,
+    operation_name: configuration.operation_name,
+    schema_sdl: configuration.schema_sdl,
+    response_body_json: JSON.stringify(options.response),
+  };
+
+  return withRequestResult.willRespondWith(
+    options.status ?? 200,
+    (builder: GraphqlHttpResponseBuilder) => {
+      // Set BEFORE pluginContents: without an explicit content-type header, pact_ffi's HTTP
+      // callback falls back to the content type passed to the FFI call itself
+      // (application/graphql-response), which is wrong on the wire.
+      builder.headers({ 'content-type': 'application/json' });
+      builder.pluginContents(
+        GRAPHQL_RESPONSE_CONTENT_TYPE,
+        JSON.stringify(responseConfiguration),
+      );
     },
   );
 }
