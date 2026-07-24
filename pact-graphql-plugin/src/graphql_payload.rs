@@ -55,7 +55,7 @@ pub struct RequestMismatch {
 }
 
 impl RequestMismatch {
-    fn new(path: &str, expected: String, actual: String, description: &str) -> Self {
+    pub(crate) fn new(path: &str, expected: String, actual: String, description: &str) -> Self {
         Self {
             path: path.to_string(),
             expected,
@@ -82,6 +82,7 @@ impl CanonicalGraphqlRequest {
             transport,
             schema_sdl,
             query_matching,
+            response_body_json: _,
         } = req;
 
         query_document = canonicalize_query(&query_document, operation_name.as_deref())?;

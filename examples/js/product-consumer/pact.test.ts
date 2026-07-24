@@ -446,6 +446,8 @@ describe('GraphQL pact', () => {
     });
   });
 
+  // TODO(plan-2): once the JS DSL forwards response_body_json to the plugin, this
+  // assertion moves to the plugin and this local check can be deleted.
   describe('response not in schema', () => {
     it('rejects responses with unknown fields', async () => {
       const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider-negative' });

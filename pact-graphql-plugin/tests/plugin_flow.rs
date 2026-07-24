@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use pact_plugin_driver::proto::generate_content_request::{ContentFor, TestMode};
 use pact_plugin_driver::proto::pact_plugin_server::PactPlugin;
-use pact_plugin_driver::proto::{ConfigureInteractionRequest, GenerateContentRequest};
+use pact_plugin_driver::proto::{
+    Body, CompareContentsRequest, ConfigureInteractionRequest, GenerateContentRequest,
+    InitPluginRequest, PluginConfiguration,
+};
 use pact_plugin_driver::utils::to_proto_struct;
 use tempfile::TempDir;
 use tonic::Request;
@@ -89,4 +92,153 @@ async fn configure_and_generate_json_body() {
         .expect("generated body");
     let generated_content = String::from_utf8(generated_body.content.clone().unwrap()).unwrap();
     assert_eq!(generated_content, expected_graphql_body());
+}
+
+const PRODUCT_SDL: &str = r#"
+type Query { product(id: ID!): Product, products: [Product!]! }
+type Product {
+  id: ID!
+  name: String
+  status: ProductStatus!
+  rating: Int
+  category: Category
+}
+type Category { id: ID!, name: String! }
+enum ProductStatus { ACTIVE ARCHIVED }
+"#;
+
+const PRODUCT_QUERY: &str = "query GetProduct { product(id: \"10\") { id name status } }";
+
+fn product_request(response_body_json: Option<&str>) -> GraphqlPluginRequest {
+    GraphqlPluginRequest {
+        query_document: PRODUCT_QUERY.into(),
+        operation_name: Some("GetProduct".into()),
+        variables_json: None,
+        transport: pact_graphql_plugin::encoder::Transport::JsonBody,
+        schema_sdl: Some(PRODUCT_SDL.into()),
+        query_matching: Default::default(),
+        response_body_json: response_body_json.map(str::to_string),
+    }
+}
+
+#[tokio::test]
+async fn advertises_a_response_content_matcher() {
+    let (_dir, plugin) = temp_plugin();
+    let catalogue = plugin
+        .init_plugin(Request::new(InitPluginRequest::default()))
+        .await
+        .expect("init succeeds")
+        .into_inner()
+        .catalogue;
+
+    assert!(
+        catalogue.iter().any(|entry| entry.key == "graphql-response"
+            && entry.values.get("content-types")
+                == Some(&"application/graphql-response".to_string())),
+        "catalogue is {catalogue:#?}"
+    );
+}
+
+#[tokio::test]
+async fn configure_returns_a_response_part_with_derived_rules() {
+    let (_dir, plugin) = temp_plugin();
+    let request = product_request(Some(
+        r#"{"data":{"product":{"id":"10","name":"Backpack","status":"ACTIVE"}}}"#,
+    ));
+
+    let response = plugin
+        .configure_interaction(Request::new(make_contents_config(&request)))
+        .await
+        .expect("configure succeeds")
+        .into_inner();
+
+    assert_eq!(response.error, "");
+    assert_eq!(response.interaction.len(), 2, "request and response parts");
+
+    let response_part = response
+        .interaction
+        .iter()
+        .find(|part| part.part_name == "response")
+        .expect("a response part is returned");
+
+    assert_eq!(
+        response_part
+            .contents
+            .as_ref()
+            .map(|body| body.content_type.as_str()),
+        Some("application/json")
+    );
+
+    let status_rule = response_part
+        .rules
+        .get("$.data.product.status")
+        .expect("enum rule is derived");
+    assert_eq!(status_rule.rule[0].r#type, "regex");
+
+    let name_rule = response_part
+        .rules
+        .get("$.data.product.name")
+        .expect("scalar rule is derived");
+    assert_eq!(name_rule.rule[0].r#type, "type");
+}
+
+#[tokio::test]
+async fn configure_rejects_a_response_that_violates_the_schema() {
+    let (_dir, plugin) = temp_plugin();
+    let request = product_request(Some(
+        r#"{"data":{"product":{"id":"10","name":"Backpack","status":"ACTIVE","internalSku":"X"}}}"#,
+    ));
+
+    let error = plugin
+        .configure_interaction(Request::new(make_contents_config(&request)))
+        .await
+        .expect_err("configure fails")
+        .message()
+        .to_string();
+
+    assert!(
+        error.contains("internalSku") && error.contains("Product"),
+        "error names the offending field: {error}"
+    );
+}
+
+#[tokio::test]
+async fn compare_contents_reports_response_mismatches() {
+    let (_dir, plugin) = temp_plugin();
+
+    // Configure first so we have the plugin configuration to compare against.
+    let request = product_request(Some(
+        r#"{"data":{"product":{"id":"10","name":"Backpack","status":"ACTIVE"}}}"#,
+    ));
+    let configured = plugin
+        .configure_interaction(Request::new(make_contents_config(&request)))
+        .await
+        .expect("configure succeeds")
+        .into_inner();
+    let plugin_configuration: PluginConfiguration = configured
+        .plugin_configuration
+        .expect("plugin configuration");
+
+    let actual = r#"{"data":{"product":{"id":"10","name":"Backpack","status":"SOLD_OUT"}}}"#;
+    let compared = plugin
+        .compare_contents(Request::new(CompareContentsRequest {
+            expected: None,
+            actual: Some(Body {
+                content_type: "application/graphql-response".to_string(),
+                content: Some(actual.as_bytes().to_vec()),
+                content_type_hint: 0,
+            }),
+            allow_unexpected_keys: false,
+            rules: Default::default(),
+            plugin_configuration: Some(plugin_configuration),
+        }))
+        .await
+        .expect("compare succeeds")
+        .into_inner();
+
+    let mismatches = compared
+        .results
+        .get("$.data.product.status")
+        .expect("a mismatch is reported for status");
+    assert_eq!(mismatches.mismatches.len(), 1, "got {mismatches:#?}");
 }

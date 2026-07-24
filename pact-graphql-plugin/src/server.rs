@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use pact_plugin_driver::proto;
 use pact_plugin_driver::proto::body::ContentTypeHint;
 use pact_plugin_driver::proto::catalogue_entry::EntryType;
@@ -32,11 +32,13 @@ use crate::encoder::{GraphqlRequest, RequestEncoder, Transport};
 use crate::graphql_payload::{CanonicalGraphqlRequest, RequestMismatch};
 use crate::interaction::{GraphqlInteractionBuilder, GraphqlPluginConfig, GraphqlPluginRequest};
 use crate::schema::SchemaRegistry;
+use crate::schema_index::SchemaIndex;
 
 const DEFAULT_SCHEMA_DIR: &str = ".pact-graphql-plugin/schemas";
 const PLUGIN_NAME: &str = "graphql";
 const GRAPHQL_JSON_CONTENT_TYPE: &str = "application/graphql";
 const GRAPHQL_QUERY_CONTENT_TYPE: &str = "application/graphql";
+const GRAPHQL_RESPONSE_CONTENT_TYPE: &str = "application/graphql-response";
 const GRAPHQL_VALIDATION_MISMATCH: &str = "GraphQL query validation failed";
 
 pub struct GraphqlPlugin {
@@ -70,13 +72,73 @@ impl GraphqlPlugin {
             pact_configuration: None,
         };
 
+        let mut interactions = vec![InteractionResponse {
+            contents: Some(body),
+            plugin_configuration: Some(plugin_cfg.clone()),
+            part_name: "request".to_string(),
+            ..InteractionResponse::default()
+        }];
+
+        if let Some(response_json) = config.response_body_json.as_deref() {
+            let response_value: serde_json::Value = serde_json::from_str(response_json)
+                .context("response_body_json must be valid JSON")?;
+
+            let sdl = config
+                .inline_schema
+                .as_ref()
+                .map(|_| CanonicalGraphqlRequest {
+                    payload: config.request.clone(),
+                    inline_schema: config.inline_schema.clone(),
+                    query_matching: config.query_matching,
+                })
+                .map(|canonical| canonical.inline_schema_sdl())
+                .transpose()?
+                .flatten();
+
+            if let Some(sdl) = sdl {
+                let schema_index = SchemaIndex::from_sdl(&sdl)
+                    .context("failed to parse GraphQL schema SDL")?;
+
+                let mismatches = crate::response::validate_response(
+                    &schema_index,
+                    &config.query_document,
+                    config.operation_name.as_deref(),
+                    &response_value,
+                )?;
+
+                if !mismatches.is_empty() {
+                    let detail = mismatches
+                        .iter()
+                        .map(|mismatch| format!("{}: {}", mismatch.path, mismatch.description))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    bail!("GraphQL response validation failed: {detail}");
+                }
+
+                let derived = crate::response::derive_matching_rules(
+                    &schema_index,
+                    &config.query_document,
+                    config.operation_name.as_deref(),
+                    &response_value,
+                )?;
+
+                interactions.push(InteractionResponse {
+                    contents: Some(Body {
+                        content_type: "application/json".to_string(),
+                        content: Some(response_json.as_bytes().to_vec()),
+                        content_type_hint: ContentTypeHint::Text as i32,
+                    }),
+                    rules: derived_rules_to_proto(derived),
+                    plugin_configuration: Some(plugin_cfg.clone()),
+                    part_name: "response".to_string(),
+                    ..InteractionResponse::default()
+                });
+            }
+        }
+
         Ok(ConfigureInteractionResponse {
             error: String::new(),
-            interaction: vec![InteractionResponse {
-                contents: Some(body),
-                plugin_configuration: Some(plugin_cfg.clone()),
-                ..InteractionResponse::default()
-            }],
+            interaction: interactions,
             plugin_configuration: Some(plugin_cfg),
         })
     }
@@ -121,6 +183,14 @@ impl PactPlugin for GraphqlPlugin {
                     GRAPHQL_JSON_CONTENT_TYPE.to_string(),
                 )]),
             },
+            CatalogueEntry {
+                r#type: EntryType::ContentMatcher as i32,
+                key: "graphql-response".to_string(),
+                values: HashMap::from([(
+                    "content-types".to_string(),
+                    GRAPHQL_RESPONSE_CONTENT_TYPE.to_string(),
+                )]),
+            },
         ];
 
         Ok(Response::new(proto::InitPluginResponse { catalogue }))
@@ -163,6 +233,53 @@ impl PactPlugin for GraphqlPlugin {
 
         let actual_body =
             actual.ok_or_else(|| Status::invalid_argument("actual request body is required"))?;
+        let actual_content_type = actual_body.content_type.clone();
+
+        if actual_content_type.starts_with(GRAPHQL_RESPONSE_CONTENT_TYPE) {
+            let bytes = actual_body
+                .content
+                .ok_or_else(|| Status::invalid_argument("actual body content is required"))?;
+            let response_value: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|err| Status::invalid_argument(err.to_string()))?;
+
+            let canonical = CanonicalGraphqlRequest {
+                payload: config.request.clone(),
+                inline_schema: config.inline_schema.clone(),
+                query_matching: config.query_matching,
+            };
+            let Some(sdl) = canonical.inline_schema_sdl().map_err(to_status)? else {
+                // No schema was supplied, so there is nothing to validate against.
+                return Ok(Response::new(build_response_compare_contents_response(
+                    Vec::new(),
+                )));
+            };
+            let schema_index = SchemaIndex::from_sdl(&sdl).map_err(to_status)?;
+
+            let mismatches = crate::response::validate_response(
+                &schema_index,
+                &config.query_document,
+                config.operation_name.as_deref(),
+                &response_value,
+            )
+            .map_err(to_status)?;
+
+            let as_request: Vec<RequestMismatch> = mismatches
+                .into_iter()
+                .map(|mismatch| {
+                    RequestMismatch::new(
+                        &mismatch.path,
+                        mismatch.expected,
+                        mismatch.actual,
+                        &mismatch.description,
+                    )
+                })
+                .collect();
+
+            return Ok(Response::new(build_response_compare_contents_response(
+                as_request,
+            )));
+        }
+
         let actual_bytes = actual_body
             .content
             .ok_or_else(|| Status::invalid_argument("actual request body is required"))?;
@@ -453,6 +570,39 @@ fn default_content_type(transport: &Transport) -> String {
     }
 }
 
+fn derived_rules_to_proto(
+    derived: std::collections::BTreeMap<String, crate::response::DerivedRule>,
+) -> HashMap<String, proto::MatchingRules> {
+    derived
+        .into_iter()
+        .map(|(path, rule)| {
+            let proto_rule = match rule {
+                crate::response::DerivedRule::Type => proto::MatchingRule {
+                    r#type: "type".to_string(),
+                    values: None,
+                },
+                crate::response::DerivedRule::Regex(pattern) => proto::MatchingRule {
+                    r#type: "regex".to_string(),
+                    values: Some(Struct {
+                        fields: std::collections::BTreeMap::from([(
+                            "regex".to_string(),
+                            prost_types::Value {
+                                kind: Some(prost_types::value::Kind::StringValue(pattern)),
+                            },
+                        )]),
+                    }),
+                },
+            };
+            (
+                path,
+                proto::MatchingRules {
+                    rule: vec![proto_rule],
+                },
+            )
+        })
+        .collect()
+}
+
 fn build_compare_contents_response(mismatches: Vec<RequestMismatch>) -> CompareContentsResponse {
     if mismatches.is_empty() {
         return CompareContentsResponse {
@@ -474,6 +624,41 @@ fn build_compare_contents_response(mismatches: Vec<RequestMismatch>) -> CompareC
             mismatches: content_mismatches,
         },
     );
+
+    CompareContentsResponse {
+        error: String::new(),
+        type_mismatch: None,
+        results,
+    }
+}
+
+/// Like `build_compare_contents_response`, but for GraphQL *response*
+/// mismatches: each mismatch already carries its own JSON-path (`$...`)
+/// identifying the offending field, so results are grouped per-path rather
+/// than collapsed under a single `$` bucket.
+fn build_response_compare_contents_response(
+    mismatches: Vec<RequestMismatch>,
+) -> CompareContentsResponse {
+    if mismatches.is_empty() {
+        return CompareContentsResponse {
+            error: String::new(),
+            type_mismatch: None,
+            results: HashMap::new(),
+        };
+    }
+
+    let mut results: HashMap<String, ContentMismatches> = HashMap::new();
+    for mismatch in mismatches {
+        let path = mismatch.path.clone();
+        let content_mismatch = content_mismatch_from_request(mismatch);
+        results
+            .entry(path)
+            .or_insert_with(|| ContentMismatches {
+                mismatches: Vec::new(),
+            })
+            .mismatches
+            .push(content_mismatch);
+    }
 
     CompareContentsResponse {
         error: String::new(),
@@ -651,6 +836,7 @@ mod tests {
                 transport: Transport::JsonBody,
             },
             query_matching: Default::default(),
+            response_body_json: None,
         };
         let struct_value = config_to_struct(&config).unwrap();
         let value = proto_struct_to_json(&struct_value);
@@ -716,6 +902,7 @@ mod tests {
                 transport: Transport::JsonBody,
             },
             query_matching: Default::default(),
+            response_body_json: None,
         };
         let json_value = serde_json::to_value(&config).unwrap();
         assert_eq!(
