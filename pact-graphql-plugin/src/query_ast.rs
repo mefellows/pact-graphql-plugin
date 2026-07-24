@@ -342,7 +342,7 @@ fn diff_selection_sets(
 /// Flattens a selection set into `(response key, field)` pairs. Inline
 /// fragments are flattened into their parent — the type condition is preserved
 /// in the response key so two different conditions do not collide.
-fn collect_fields<'a>(
+pub(crate) fn collect_fields<'a>(
     selection_set: &'a SelectionSet<'static, String>,
 ) -> Vec<(String, &'a QueryField<'static, String>)> {
     let mut fields = Vec::new();

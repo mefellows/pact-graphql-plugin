@@ -516,8 +516,6 @@ impl SchemaIndex {
         false
     }
 
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn enum_values(&self, type_name: &str) -> Option<&HashSet<String>> {
         match self.types.get(type_name) {
             Some(TypeInfo::Enum(info)) => Some(&info.values),
@@ -537,8 +535,6 @@ impl SchemaIndex {
         matches!(self.types.get(type_name), Some(TypeInfo::Scalar))
     }
 
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn field_return_type(
         &self,
         parent_type: &str,
@@ -736,8 +732,6 @@ impl TypeRef {
     }
 
     /// Strips a single `NonNull` wrapper, if present.
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn unwrap_non_null(&self) -> &TypeRef {
         match self {
             TypeRef::NonNull(inner) => inner,
@@ -746,8 +740,6 @@ impl TypeRef {
     }
 
     /// Returns the item type when this is a list, ignoring any outer `NonNull`.
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn as_list_item(&self) -> Option<&TypeRef> {
         match self.unwrap_non_null() {
             TypeRef::List(inner) => Some(inner),
