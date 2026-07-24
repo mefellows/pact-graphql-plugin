@@ -268,6 +268,13 @@ impl PactPlugin for GraphqlPlugin {
             actual.ok_or_else(|| Status::invalid_argument("actual request body is required"))?;
         let actual_content_type = actual_body.content_type.clone();
 
+        // NOTE: unreachable from the HTTP consumer flow today. Design decision A (see
+        // docs/plans/2026-07-24-response-part-wiring.md) records response parts with
+        // `content-type: application/json` and schema-derived matching rules attached directly
+        // to the interaction, so Pact core's own JSON matcher handles response comparison and
+        // never calls back into this plugin's `compare_contents` for the response side. This
+        // branch is retained for a future synchronous-message (GraphQL-over-WebSocket) transport,
+        // where the plugin -- not core's JSON matcher -- would own comparison of the message body.
         if actual_content_type.starts_with(GRAPHQL_RESPONSE_CONTENT_TYPE) {
             let bytes = actual_body
                 .content

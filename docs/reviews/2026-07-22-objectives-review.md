@@ -83,6 +83,32 @@ Root causes are two different bugs:
   helpers so the error is *always* good.
 - Response validation doesn't exist at all — see §4.1.
 
+**Update (2026-07-24, `docs/plans/2026-07-24-response-part-wiring.md`).** The second bullet is
+now out of date: response validation exists and runs. `graphqlHttpInteraction` accepts a
+`response` option that makes a second, response-side `configure_interaction` call to the
+plugin. That call validates the response body against the schema and the query's selection
+set and, on success, derives Pact matching rules from the schema (scalar/enum types) and
+attaches them to the response part, which Pact core's own JSON matcher then enforces. This is
+verified end-to-end: the examples in `pact.test.ts` now build their happy-path responses via
+`response` rather than raw `jsonBody`, the generated pact file carries the derived
+`matchingRules` on the response body, and provider verification against the example's real
+Express server still passes.
+
+The first bullet's underlying problem, however, is confirmed and still open, and it now also
+covers the response side. A spike (`## Task 1 findings` in the plan above) proved that when
+the response-side `configure_interaction` call itself returns an `Err` (e.g. the *expected*
+response in the test contains a field absent from the schema), the plugin's rejection reaches
+`pact_ffi` correctly, but `@pact-foundation/pact-core`'s
+`withPluginResponseInteractionContents` hardcodes `return true` and discards the FFI error
+code, so the JS caller never sees it — the interaction is silently recorded with a bodyless
+response part instead of failing the test. So: **response matching now genuinely works**
+(a response that violates the schema-derived rules fails the interaction at comparison time);
+**response rejection at author time** (the author declaring an expected response that itself
+violates the schema) **still does not surface**, for the same class of upstream `pact-core`
+bug already identified for query validation. The "response not in schema" example
+(`pact.test.ts`) therefore still validates locally with a `TODO` marker rather than asserting
+on the plugin, and should not be read as evidence the gap is closed.
+
 ### 1.4 Subscriptions / messages are half-built
 
 - The envelope shape `{ subscription, variables, data }` is invented in the JS helper
@@ -165,18 +191,42 @@ architecture is supposed to eliminate.
 
 ### What undercuts it
 
-**4.1 The response is entirely GraphQL-unaware.** The plugin registers only as a matcher
-for the request content type (`server.rs:107-124`) and every code path in `compare_contents`
-/ `verify_interaction` operates on the request. The response is a plain `jsonBody({data:
-{...}})` matched by Pact core's generic JSON matcher. So the plugin cannot catch:
+**4.1 The response is entirely GraphQL-unaware.**
 
-- fields in the response that aren't in the schema (the example proves this — it writes a
-  pact containing `internalSku` and passes),
-- fields in the response that aren't in the query's selection set,
-- wrong scalar/enum types, missing non-null fields, `data`/`errors` envelope rules.
+**Update (2026-07-24, `docs/plans/2026-07-24-response-part-wiring.md`).** This is now only
+partially true, and only in one direction. The plugin registers as a `ContentMatcher` for
+`application/graphql-response` (`server.rs`) and `graphqlHttpInteraction`'s `response` option
+routes the expected body through a response-side `configure_interaction` call. When the
+response is well-formed, that call derives Pact matching rules from the schema — `match: type`
+for scalars, `match: regex` over the enum's declared values for enum fields — and attaches them
+to the response part instead of the plain-equality body Pact core would otherwise record. This
+was confirmed by inspecting the generated pact file (the response body carries a `matchingRules`
+block keyed by field path) and by running provider verification against the example's real
+server, which still passes with these rules in place. So for **well-formed** responses, the
+plugin is no longer response-unaware: type and enum mismatches introduced later (e.g. a
+provider regression) would now be caught by core's JSON matcher using schema-derived rules that
+didn't exist before this change.
 
-This is the largest single gap. Response correctness is where GraphQL consumers actually
-get burned, and it's where a schema-aware plugin has the most leverage.
+What is **not** fixed, and must not be read as fixed by the above: the plugin still cannot make
+a malformed *expected* response fail the consumer test. The response-side `configure_interaction`
+call does correctly detect and reject (as an `Err`) a response containing a field absent from
+the schema or absent from the query's selection set — this was directly observed in the
+plugin's own log during the Task 1 spike — but that rejection never reaches the JS caller, for
+the `pact-core` reason detailed in §1.3. So, unchanged from the original finding:
+
+- fields in the response that aren't in the schema still silently make it into the pact file if
+  the test author writes them into the expected `response` (the plugin rejects internally, but
+  the author sees no failure and the interaction is recorded incomplete rather than correct),
+- fields in the response that aren't in the query's selection set have the same gap,
+- what *is* now caught, because it flows through core's matching rules rather than plugin-side
+  configure-time validation, is a mismatch between a well-formed expected response and what a
+  real provider actually returns (wrong scalar/enum type, wrong enum value) — this is the part
+  of "response correctness" this task closes.
+
+The distinction matters: this task delivers response *matching*, not response *authoring-time
+rejection*. The latter needs the upstream `pact-core` fix described in §1.3 before the
+"response not in schema" and "field not selected" example tests can be rewritten to assert on
+the plugin instead of validating locally.
 
 **4.2 Query comparison is string equality, not semantic.** `diff` compares
 `query_document` as a `String` (`graphql_payload.rs:178`) after only dedent+trim. The AST is

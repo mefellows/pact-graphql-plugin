@@ -64,6 +64,64 @@ await pact.executeTest(async (mockServer) => {
 });
 ```
 
+> The example above hand-builds the expected response with `jsonBody`, which Pact core matches
+> with plain equality/type rules and the plugin never validates. Prefer the `response` option
+> shown below so the response is checked against the schema/selection set too.
+
+## Configuring the response through the plugin
+
+`graphqlHttpInteraction` accepts an optional `response` (and `status`, default `200`) field:
+
+```ts
+const pluginInteraction = await graphqlHttpInteraction(interaction, {
+  schema,
+  query,
+  variables: { id: '10' },
+  operationName: 'GetProduct',
+  response: {
+    data: {
+      product: { id: '10', name: 'product name', status: 'ACTIVE' },
+    },
+  },
+});
+
+await pluginInteraction.executeTest(async (mockServer) => { /* ... */ });
+```
+
+When `response` is supplied, the helper calls `willRespondWith`/`pluginContents` on the caller's
+behalf so the response body is sent to the plugin for validation and the plugin derives Pact
+matching rules from the schema (e.g. `match: type` for scalar fields, a `match: regex` enum-value
+check for enums) instead of the response being matched by plain equality.
+
+### Why the plugin is configured twice per HTTP interaction
+
+A GraphQL HTTP interaction makes **two** separate `usingPlugin`/`configure_interaction` calls to
+the plugin — one for the request part (`content_type: application/graphql`) and one for the
+response part (`content_type: application/graphql-response`). This is not optional plumbing, it's
+required by how `pact_ffi` applies plugin-configured content for `Synchronous_HTTP` interactions:
+`pactffi_interaction_contents(interaction, part, content_type, contents)` takes an
+`InteractionPart` enum (`Request` or `Response`) chosen by the *caller*, and the FFI applies
+`contents.first()` from whatever the plugin returns to that part — it does not honour a
+`part_name` field inside the plugin's response, and it does not accept two parts from one call.
+An earlier version of this plugin tried to return both parts from a single `configure_interaction`
+call (keyed by `part_name: "request"` / `part_name: "response"`); the FFI silently applied the
+first part to whichever side the caller had asked for and discarded the second. **Each part of an
+HTTP interaction must come from its own `configure_interaction` call.**
+
+The response-side `configure_interaction` call also intentionally returns
+`plugin_configuration: None`. Pact's V4 interaction model stores plugin configuration in a single
+`plugin_config` field keyed only by plugin name, not by part — a second call that returned a
+non-empty `plugin_configuration` would silently overwrite (not merge with) the first call's config,
+which is what carries the request's `variables_json`. Returning `None` avoids that clobbering, and
+is also semantically correct: the response part needs no stored plugin config, because its matching
+is performed by Pact core's own JSON matcher against the matching rules the plugin attaches
+directly to the part, not by calling back into the plugin.
+
+One consequence of this design: the response body in the generated pact file is recorded with
+`content-type: application/json` — the real content type a GraphQL server sends — not
+`application/graphql-response`. The latter is only ever the content type passed to the
+*configure* call, so that pact files stay valid for provider verification against a real server.
+
 ## Example Consumer
 
 A complete example lives under `examples/js/product-consumer`. It links to the helper via a local `file:` dependency so you can exercise the workflow before the package is published.
