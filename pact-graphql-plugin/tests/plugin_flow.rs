@@ -22,6 +22,13 @@ fn temp_plugin() -> (TempDir, GraphqlPlugin) {
 }
 
 fn make_contents_config(req: &GraphqlPluginRequest) -> ConfigureInteractionRequest {
+    make_contents_config_with_type(req, "application/graphql")
+}
+
+fn make_contents_config_with_type(
+    req: &GraphqlPluginRequest,
+    content_type: &str,
+) -> ConfigureInteractionRequest {
     let value = serde_json::to_value(req).unwrap();
     let mut map = HashMap::new();
     if let serde_json::Value::Object(obj) = value {
@@ -31,7 +38,7 @@ fn make_contents_config(req: &GraphqlPluginRequest) -> ConfigureInteractionReque
     }
 
     ConfigureInteractionRequest {
-        content_type: "application/graphql".to_string(),
+        content_type: content_type.to_string(),
         contents_config: Some(to_proto_struct(&map)),
     }
 }
@@ -140,6 +147,39 @@ async fn advertises_a_response_content_matcher() {
 }
 
 #[tokio::test]
+async fn configure_with_request_content_type_returns_a_single_request_part() {
+    let (_dir, plugin) = temp_plugin();
+    // response_body_json is set here to prove the request-side call ignores it and still
+    // returns exactly one part, regardless of whether a response is also being configured.
+    let request = product_request(Some(
+        r#"{"data":{"product":{"id":"10","name":"Backpack","status":"ACTIVE"}}}"#,
+    ));
+
+    let response = plugin
+        .configure_interaction(Request::new(make_contents_config_with_type(
+            &request,
+            "application/graphql",
+        )))
+        .await
+        .expect("configure succeeds")
+        .into_inner();
+
+    assert_eq!(response.error, "");
+    assert_eq!(response.interaction.len(), 1, "exactly one part");
+
+    let part = &response.interaction[0];
+    assert_eq!(part.part_name, "request");
+    assert!(
+        part.plugin_configuration.is_some(),
+        "request part carries plugin_configuration"
+    );
+    assert!(
+        response.plugin_configuration.is_some(),
+        "top-level plugin_configuration is set for the request call"
+    );
+}
+
+#[tokio::test]
 async fn configure_returns_a_response_part_with_derived_rules() {
     let (_dir, plugin) = temp_plugin();
     let request = product_request(Some(
@@ -147,19 +187,19 @@ async fn configure_returns_a_response_part_with_derived_rules() {
     ));
 
     let response = plugin
-        .configure_interaction(Request::new(make_contents_config(&request)))
+        .configure_interaction(Request::new(make_contents_config_with_type(
+            &request,
+            "application/graphql-response",
+        )))
         .await
         .expect("configure succeeds")
         .into_inner();
 
     assert_eq!(response.error, "");
-    assert_eq!(response.interaction.len(), 2, "request and response parts");
+    assert_eq!(response.interaction.len(), 1, "exactly one response part");
 
-    let response_part = response
-        .interaction
-        .iter()
-        .find(|part| part.part_name == "response")
-        .expect("a response part is returned");
+    let response_part = &response.interaction[0];
+    assert_eq!(response_part.part_name, "response");
 
     assert_eq!(
         response_part
@@ -167,6 +207,18 @@ async fn configure_returns_a_response_part_with_derived_rules() {
             .as_ref()
             .map(|body| body.content_type.as_str()),
         Some("application/json")
+    );
+
+    // Load-bearing: the response-side call must NOT return plugin_configuration, otherwise it
+    // clobbers the interaction's single shared plugin_config slot and destroys the request-side
+    // call's variables_json. See server.rs `configure_response` doc comment.
+    assert!(
+        response_part.plugin_configuration.is_none(),
+        "response part must not carry plugin_configuration"
+    );
+    assert!(
+        response.plugin_configuration.is_none(),
+        "top-level plugin_configuration must not be set for the response call"
     );
 
     let status_rule = response_part
@@ -190,7 +242,10 @@ async fn configure_rejects_a_response_that_violates_the_schema() {
     ));
 
     let error = plugin
-        .configure_interaction(Request::new(make_contents_config(&request)))
+        .configure_interaction(Request::new(make_contents_config_with_type(
+            &request,
+            "application/graphql-response",
+        )))
         .await
         .expect_err("configure fails")
         .message()
@@ -199,6 +254,27 @@ async fn configure_rejects_a_response_that_violates_the_schema() {
     assert!(
         error.contains("internalSku") && error.contains("Product"),
         "error names the offending field: {error}"
+    );
+}
+
+#[tokio::test]
+async fn configure_rejects_a_response_call_without_response_body_json() {
+    let (_dir, plugin) = temp_plugin();
+    let request = product_request(None);
+
+    let error = plugin
+        .configure_interaction(Request::new(make_contents_config_with_type(
+            &request,
+            "application/graphql-response",
+        )))
+        .await
+        .expect_err("configure fails")
+        .message()
+        .to_string();
+
+    assert!(
+        error.contains("response_body_json"),
+        "error explains that response_body_json is required: {error}"
     );
 }
 

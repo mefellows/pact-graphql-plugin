@@ -66,80 +66,113 @@ impl GraphqlPlugin {
         let json = proto_struct_to_json(contents_struct);
         let gql_request: GraphqlPluginRequest = serde_json::from_value(json)?;
         let config = self.builder.build(gql_request)?;
-        let body = encode_body(&config)?;
+
+        if req.content_type.starts_with(GRAPHQL_RESPONSE_CONTENT_TYPE) {
+            self.configure_response(&config)
+        } else {
+            self.configure_request(&config)
+        }
+    }
+
+    /// Builds the single `"request"` part for the request-side `configure_interaction` call.
+    ///
+    /// `pact_ffi` applies only `contents.first()` of whatever the caller's `InteractionPart`
+    /// selected (see the plan's Background section) and stores `plugin_configuration` in a single
+    /// shared, per-interaction slot keyed by plugin name that a later call would overwrite. Each
+    /// content type therefore gets its own `configure_interaction` call and returns exactly one
+    /// part; see `configure_response` for the response side.
+    fn configure_request(&self, config: &GraphqlPluginConfig) -> Result<ConfigureInteractionResponse> {
+        let body = encode_body(config)?;
         let plugin_cfg = PluginConfiguration {
-            interaction_configuration: Some(config_to_struct(&config)?),
+            interaction_configuration: Some(config_to_struct(config)?),
             pact_configuration: None,
         };
 
-        let mut interactions = vec![InteractionResponse {
+        let interaction = InteractionResponse {
             contents: Some(body),
             plugin_configuration: Some(plugin_cfg.clone()),
             part_name: "request".to_string(),
             ..InteractionResponse::default()
-        }];
-
-        if let Some(response_json) = config.response_body_json.as_deref() {
-            let response_value: serde_json::Value = serde_json::from_str(response_json)
-                .context("response_body_json must be valid JSON")?;
-
-            let sdl = config
-                .inline_schema
-                .as_ref()
-                .map(|_| CanonicalGraphqlRequest {
-                    payload: config.request.clone(),
-                    inline_schema: config.inline_schema.clone(),
-                    query_matching: config.query_matching,
-                })
-                .map(|canonical| canonical.inline_schema_sdl())
-                .transpose()?
-                .flatten();
-
-            if let Some(sdl) = sdl {
-                let schema_index = SchemaIndex::from_sdl(&sdl)
-                    .context("failed to parse GraphQL schema SDL")?;
-
-                let mismatches = crate::response::validate_response(
-                    &schema_index,
-                    &config.query_document,
-                    config.operation_name.as_deref(),
-                    &response_value,
-                )?;
-
-                if !mismatches.is_empty() {
-                    let detail = mismatches
-                        .iter()
-                        .map(|mismatch| format!("{}: {}", mismatch.path, mismatch.description))
-                        .collect::<Vec<_>>()
-                        .join("; ");
-                    bail!("GraphQL response validation failed: {detail}");
-                }
-
-                let derived = crate::response::derive_matching_rules(
-                    &schema_index,
-                    &config.query_document,
-                    config.operation_name.as_deref(),
-                    &response_value,
-                )?;
-
-                interactions.push(InteractionResponse {
-                    contents: Some(Body {
-                        content_type: "application/json".to_string(),
-                        content: Some(response_json.as_bytes().to_vec()),
-                        content_type_hint: ContentTypeHint::Text as i32,
-                    }),
-                    rules: derived_rules_to_proto(derived),
-                    plugin_configuration: Some(plugin_cfg.clone()),
-                    part_name: "response".to_string(),
-                    ..InteractionResponse::default()
-                });
-            }
-        }
+        };
 
         Ok(ConfigureInteractionResponse {
             error: String::new(),
-            interaction: interactions,
+            interaction: vec![interaction],
             plugin_configuration: Some(plugin_cfg),
+        })
+    }
+
+    /// Builds the single `"response"` part for the response-side `configure_interaction` call.
+    ///
+    /// Returns `plugin_configuration: None` on both the `InteractionResponse` and the enclosing
+    /// `ConfigureInteractionResponse` deliberately: `pact_ffi` only overwrites the interaction's
+    /// shared `plugin_config` slot when `contents.plugin_config` is non-empty
+    /// (`pact_ffi/src/plugins/mod.rs:229-231`), so returning `None` here leaves the request-side
+    /// call's stored config (with `variables_json`, etc.) intact. Response matching is instead
+    /// performed by core's own JSON matcher against the `rules` we attach directly to this part.
+    fn configure_response(&self, config: &GraphqlPluginConfig) -> Result<ConfigureInteractionResponse> {
+        let response_json = config.response_body_json.as_deref().ok_or_else(|| {
+            anyhow!("response_body_json is required to configure a GraphQL response part")
+        })?;
+
+        let response_value: serde_json::Value = serde_json::from_str(response_json)
+            .context("response_body_json must be valid JSON")?;
+
+        let canonical = CanonicalGraphqlRequest {
+            payload: config.request.clone(),
+            inline_schema: config.inline_schema.clone(),
+            query_matching: config.query_matching,
+        };
+        let sdl = canonical.inline_schema_sdl()?;
+
+        let rules = if let Some(sdl) = sdl {
+            let schema_index = SchemaIndex::from_sdl(&sdl)
+                .context("failed to parse GraphQL schema SDL")?;
+
+            let mismatches = crate::response::validate_response(
+                &schema_index,
+                &config.query_document,
+                config.operation_name.as_deref(),
+                &response_value,
+            )?;
+
+            if !mismatches.is_empty() {
+                let detail = mismatches
+                    .iter()
+                    .map(|mismatch| format!("{}: {}", mismatch.path, mismatch.description))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                bail!("GraphQL response validation failed: {detail}");
+            }
+
+            let derived = crate::response::derive_matching_rules(
+                &schema_index,
+                &config.query_document,
+                config.operation_name.as_deref(),
+                &response_value,
+            )?;
+            derived_rules_to_proto(derived)
+        } else {
+            // No schema was supplied, so there is nothing to validate or derive rules against.
+            HashMap::new()
+        };
+
+        let interaction = InteractionResponse {
+            contents: Some(Body {
+                content_type: "application/json".to_string(),
+                content: Some(response_json.as_bytes().to_vec()),
+                content_type_hint: ContentTypeHint::Text as i32,
+            }),
+            rules,
+            plugin_configuration: None,
+            part_name: "response".to_string(),
+            ..InteractionResponse::default()
+        };
+
+        Ok(ConfigureInteractionResponse {
+            error: String::new(),
+            interaction: vec![interaction],
+            plugin_configuration: None,
         })
     }
 
