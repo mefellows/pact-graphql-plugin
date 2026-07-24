@@ -12,6 +12,16 @@ fn validate_response_json(
     validate_response(&index, query, operation_name, response)
 }
 
+fn derive_rules(
+    sdl: &str,
+    query: &str,
+    operation_name: Option<&str>,
+    response: &Value,
+) -> anyhow::Result<std::collections::BTreeMap<String, DerivedRule>> {
+    let index = SchemaIndex::from_sdl(sdl)?;
+    derive_matching_rules(&index, query, operation_name, response)
+}
+
 const SDL: &str = r#"
 type Query { product(id: ID!): Product, products: [Product!]! }
 type Product {
@@ -229,4 +239,67 @@ fn rejects_an_unknown_top_level_key() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.meta");
+}
+
+#[test]
+fn derives_a_type_matcher_for_scalars() {
+    let rules = derive_rules(
+        SDL,
+        QUERY,
+        Some("GetProduct"),
+        &json!({"data": {"product": {"id": "10", "name": "Backpack", "status": "ACTIVE"}}}),
+    )
+    .unwrap();
+    assert_eq!(rules.get("$.data.product.id"), Some(&DerivedRule::Type));
+    assert_eq!(rules.get("$.data.product.name"), Some(&DerivedRule::Type));
+}
+
+#[test]
+fn derives_an_enum_regex() {
+    let rules = derive_rules(
+        SDL,
+        QUERY,
+        Some("GetProduct"),
+        &json!({"data": {"product": {"id": "10", "name": "Backpack", "status": "ACTIVE"}}}),
+    )
+    .unwrap();
+    // Members are sorted so the regex is deterministic.
+    assert_eq!(
+        rules.get("$.data.product.status"),
+        Some(&DerivedRule::Regex("^(ACTIVE|ARCHIVED)$".to_string()))
+    );
+}
+
+#[test]
+fn uses_a_wildcard_index_for_lists() {
+    let query = "query Q { products { id category { name } } }";
+    let rules = derive_rules(
+        SDL,
+        query,
+        Some("Q"),
+        &json!({"data": {"products": [{"id": "1", "category": {"name": "Bags"}}]}}),
+    )
+    .unwrap();
+    assert_eq!(rules.get("$.data.products[*].id"), Some(&DerivedRule::Type));
+    assert_eq!(
+        rules.get("$.data.products[*].category.name"),
+        Some(&DerivedRule::Type)
+    );
+    assert!(
+        !rules.keys().any(|key| key.contains("[0]")),
+        "list indices are collapsed to [*]: {rules:#?}"
+    );
+}
+
+#[test]
+fn does_not_emit_rules_for_composites_or_nulls() {
+    let rules = derive_rules(
+        SDL,
+        QUERY,
+        Some("GetProduct"),
+        &json!({"data": {"product": {"id": "10", "name": null, "status": "ACTIVE"}}}),
+    )
+    .unwrap();
+    assert!(!rules.contains_key("$.data.product"), "{rules:#?}");
+    assert!(!rules.contains_key("$.data.product.name"), "{rules:#?}");
 }

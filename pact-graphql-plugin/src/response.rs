@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use anyhow::anyhow;
 use graphql_parser::query::{Field as QueryField, OperationDefinition, SelectionSet};
@@ -322,6 +322,143 @@ fn validate_scalar(
             json_kind(value),
             format!("value is not a valid `{named}`"),
         ));
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum DerivedRule {
+    /// Pact `type` matcher — same JSON type, any value.
+    Type,
+    /// Pact `regex` matcher with the given pattern.
+    Regex(String),
+}
+
+/// Walks a GraphQL response alongside the query's selection set and derives a
+/// schema-informed Pact matching rule for every scalar/enum leaf it finds.
+/// Composite values, absent fields and nulls contribute no rule: nulls tell us
+/// nothing about shape, and composites are matched structurally by their own
+/// leaves rather than as a whole.
+pub(crate) fn derive_matching_rules(
+    schema: &SchemaIndex,
+    query_document: &str,
+    operation_name: Option<&str>,
+    response: &Value,
+) -> anyhow::Result<BTreeMap<String, DerivedRule>> {
+    let operation = query_ast::parse_and_inline(query_document, operation_name)?;
+    let root = schema
+        .root_type(operation_kind_of(&operation))
+        .ok_or_else(|| anyhow!("schema has no root type for this operation"))?
+        .to_string();
+
+    let mut rules = BTreeMap::new();
+
+    if let Some(data) = response.get("data") {
+        if !data.is_null() {
+            derive_object_rules(
+                schema,
+                selection_set_of(&operation),
+                &root,
+                data,
+                "$.data",
+                &mut rules,
+            );
+        }
+    }
+
+    Ok(rules)
+}
+
+fn derive_object_rules(
+    schema: &SchemaIndex,
+    selection_set: &SelectionSet<'static, String>,
+    parent_type: &str,
+    value: &Value,
+    path: &str,
+    rules: &mut BTreeMap<String, DerivedRule>,
+) {
+    let Value::Object(object) = value else {
+        return;
+    };
+
+    for (key, field) in collect_fields(selection_set) {
+        if field.name == "__typename" {
+            continue;
+        }
+        let Some(return_type) = schema.field_return_type(parent_type, &field.name) else {
+            continue;
+        };
+        let Some(field_value) = object.get(&key) else {
+            continue;
+        };
+        derive_value_rules(
+            schema,
+            return_type,
+            &field.selection_set,
+            field_value,
+            &format!("{path}.{key}"),
+            rules,
+        );
+    }
+}
+
+fn derive_value_rules(
+    schema: &SchemaIndex,
+    type_ref: &TypeRef,
+    selection_set: &SelectionSet<'static, String>,
+    value: &Value,
+    path: &str,
+    rules: &mut BTreeMap<String, DerivedRule>,
+) {
+    // A null tells us nothing about the shape; leave it as a literal.
+    if value.is_null() {
+        return;
+    }
+
+    if let Some(item_type) = type_ref.as_list_item() {
+        let Value::Array(items) = value else {
+            return;
+        };
+        // Every element shares one rule set, so walk only the first and key it
+        // with a wildcard index.
+        if let Some(first) = items.first() {
+            derive_value_rules(
+                schema,
+                item_type,
+                selection_set,
+                first,
+                &format!("{path}[*]"),
+                rules,
+            );
+        }
+        return;
+    }
+
+    let Some(named) = type_ref.unwrap_non_null().innermost_named() else {
+        return;
+    };
+
+    if schema.is_composite_type(named) {
+        derive_object_rules(schema, selection_set, named, value, path, rules);
+        return;
+    }
+
+    if schema.is_enum(named) {
+        if let Some(members) = schema.enum_values(named) {
+            let mut allowed: Vec<&str> = members.iter().map(String::as_str).collect();
+            allowed.sort_unstable();
+            rules.insert(
+                path.to_string(),
+                DerivedRule::Regex(format!("^({})$", allowed.join("|"))),
+            );
+        }
+        return;
+    }
+
+    // Only emit a rule for types the schema actually recognises as scalars;
+    // anything else (e.g. a malformed or unresolvable type reference) is left
+    // alone rather than guessed at.
+    if schema.is_scalar(named) {
+        rules.insert(path.to_string(), DerivedRule::Type);
     }
 }
 

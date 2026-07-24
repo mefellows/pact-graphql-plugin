@@ -523,14 +523,10 @@ impl SchemaIndex {
         }
     }
 
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn is_enum(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Enum(_)))
     }
 
-    // TODO(task-6/7): remove this allow once response validation calls this.
-    #[allow(dead_code)]
     pub(crate) fn is_scalar(&self, type_name: &str) -> bool {
         matches!(self.types.get(type_name), Some(TypeInfo::Scalar))
     }
