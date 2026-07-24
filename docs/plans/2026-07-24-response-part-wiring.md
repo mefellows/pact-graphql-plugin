@@ -346,11 +346,33 @@ matching rules) rather than merely missing an assertion.
 
 ---
 
-### Task 2: One part per configure call
+### Task 2: One part per configure call, and stop clobbering the shared plugin config
 
 **Files:**
 - Modify: `pact-graphql-plugin/src/server.rs` (the `configure` fn, currently lines 60-144)
 - Modify: `pact-graphql-plugin/tests/plugin_flow.rs`
+
+**The `plugin_config` clobbering fix (added after the Task 1 spike).** A V4 interaction stores plugin
+configuration in a single `HashMap<String, HashMap<String, Value>>` keyed by *plugin name*, not by
+part (`pact_models/src/v4/interaction.rs:109`). `pact_ffi` applies it with:
+
+```rust
+// pact-reference/rust/pact_ffi/src/plugins/mod.rs:229-231
+if !contents.plugin_config.is_empty() {
+  interaction.plugin_config_mut().insert(plugin_name, contents.plugin_config.interaction_configuration.clone());
+}
+```
+
+`insert` overwrites. So in a two-call model the response-side call's config replaces the request-side
+call's, and the request loses `variables_json` — the spike observed exactly this, producing a spurious
+`/payload/variables_json: GraphQL variables_json differs` mismatch.
+
+**The insert is guarded by `!contents.plugin_config.is_empty()`.** So the fix is entirely within our
+control and requires no upstream change: **the response-side `configure` must return
+`plugin_configuration: None`.** This is also semantically correct — under design decision A the
+response part needs no stored config, because response matching is performed by core's JSON matcher
+using the matching rules we attach to the part directly, and `generate_content` is never called for a
+consumer-side response.
 
 - [ ] **Step 1: Update the integration tests first**
 
@@ -358,10 +380,13 @@ The Task 8 tests in `plugin_flow.rs` assert that one `configure` call returns tw
 expectation is now known to be wrong. Rewrite them so that:
 
 - a `configure` call with `content_type = application/graphql` returns exactly **one**
-  `InteractionResponse`, `part_name: "request"`, regardless of whether `response_body_json` is set;
+  `InteractionResponse`, `part_name: "request"`, regardless of whether `response_body_json` is set,
+  and **does** carry `plugin_configuration`;
 - a `configure` call with `content_type = application/graphql-response` and a valid
   `response_body_json` returns exactly **one** part, `part_name: "response"`, whose body is the
-  response JSON with `content_type: "application/json"`, and whose `rules` are the derived matchers;
+  response JSON with `content_type: "application/json"`, whose `rules` are the derived matchers, and
+  whose `plugin_configuration` is **`None`** (this is the clobbering fix — assert it explicitly, it
+  is load-bearing and non-obvious);
 - a `configure` call with `content_type = application/graphql-response` and a response body
   violating the schema returns an `Err` naming the offending field path;
 - a `configure` call with `content_type = application/graphql-response` and **no**
@@ -374,13 +399,16 @@ Run `cargo test` and confirm these fail.
 Split the body of `configure` into a request path and a response path keyed on `req.content_type`
 (compare with `starts_with(GRAPHQL_RESPONSE_CONTENT_TYPE)`, consistent with `compare_contents`).
 
-The request path returns the single `"request"` part it already builds. Delete the
-`if let Some(response_json) = ...` block that appends the second part.
+The request path returns the single `"request"` part it already builds, with its
+`plugin_configuration` as today. Delete the `if let Some(response_json) = ...` block that appends the
+second part.
 
 The response path requires `response_body_json`, resolves the schema, runs
 `crate::response::validate_response`, returns an error listing every mismatch as `path: description`
 if any, and otherwise returns the single `"response"` part with `derive_matching_rules` output —
-i.e. the code currently at `server.rs:82-137`, moved and made the sole return value.
+i.e. the code currently at `server.rs:82-137`, moved and made the sole return value — with
+`plugin_configuration: None` on both the `InteractionResponse` and the enclosing
+`ConfigureInteractionResponse`.
 
 Keep the response body's `content_type` as `application/json` (design decision A above), *not* the
 GraphQL response content type.
@@ -388,6 +416,18 @@ GraphQL response content type.
 - [ ] **Step 3: Verify**
 
 `cargo test` green, `cargo build` warning-free.
+
+Then verify end-to-end, because `cargo test` cannot see either bug this task fixes. Install the
+plugin by hand (see "Running the example end-to-end") and run a consumer test that configures both
+parts. Confirm from the generated pact file that:
+
+- the response part's body is the GraphQL response envelope, not the request-shaped body;
+- the response part has a `BODY` category in its `matchingRules`;
+- `plugin_config.graphql.variables_json` is still populated (the clobbering regression);
+- no spurious `/payload/variables_json` mismatch is reported.
+
+If the helper does not yet support this (Task 3), do it with a temporary inline test as the spike did,
+and delete it afterwards.
 
 - [ ] **Step 4: Commit**
 
@@ -467,12 +507,33 @@ matching rules, now schema-derived.
 
 - [ ] **Step 2: Rewrite the "response not in schema" test to assert on the plugin**
 
-Delete the local `getUnknownFields` helper and the `// Pact JS doesn't surface response schema
-violations; validate locally.` comment, along with the `TODO(plan-2)` marker Task 8 added. Replace
-the test body with an assertion that building the interaction **rejects**, naming `internalSku`.
+**BLOCKED — the Task 1 spike disproved A3. Do not attempt this step; leave the test as-is and keep
+the TODO.** Retained here as documentation of what unblocks it.
 
-If Task 1 found that A3 is false and plugin errors do not surface, do **not** fake this — leave the
-test as-is, keep the TODO, and report that the remaining blocker is error propagation in pact-js.
+The intent was: delete the local `getUnknownFields` helper and the `// Pact JS doesn't surface
+response schema violations; validate locally.` comment, along with the `TODO(plan-2)` marker Task 8
+added, and assert instead that building the interaction **rejects**, naming `internalSku`.
+
+The spike found the plugin *does* return the right error and the native layer *does* log it, but the
+JS caller never sees it. Root cause, confirmed by reading the shipped binding:
+
+```js
+// node_modules/@pact-foundation/pact-core/src/consumer/index.js:80-83
+withPluginResponseInteractionContents: (contentType, contents) => {
+    ffi.pactffiPluginInteractionContents(interactionPtr, INTERACTION_PART_RESPONSE, contentType, contents);
+    return true;   // ← FFI return code discarded, success hardcoded
+},
+```
+
+`pactffi_interaction_contents` returns `0` on success and `6` on plugin error, having already called
+`set_error_msg` (`pact_ffi/src/plugins/mod.rs:281-285`). `pact-core` throws that code away and
+hardcodes `true`; `ResponseWithPluginBuilder.pluginContents` then ignores its return value too. So the
+error is discarded twice over, and the interaction is recorded with a bodyless response part — a
+silently corrupt pact rather than a failed test.
+
+Unblocking this needs an upstream fix in `@pact-foundation/pact-core`: check the return code and, when
+non-zero, read the message via `pactffiGetErrorMessage` and throw. That is a small, contributable
+change, but it is upstream of this repo and must not be faked locally.
 
 - [ ] **Step 3: Add a test for a field the query did not select**
 
