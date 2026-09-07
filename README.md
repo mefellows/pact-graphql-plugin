@@ -9,6 +9,98 @@ This repository hosts the WIP GraphQL Pact plugin plus supporting tooling.
 
 ## Quick Start (JS Consumer)
 
+The `graphql(...)` DSL states the schema and endpoint once per pact; each interaction then
+contributes only GraphQL and expectations.
+
+```ts
+import { readFileSync } from 'node:fs';
+import { PactV4 } from '@pact-foundation/pact';
+import { graphql, gql } from 'pact-graphql-helper';
+
+const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
+const api = graphql(pact, { schema: readFileSync('schema.graphql', 'utf8') });
+
+await api
+  .interaction('a GraphQL product request')
+  .given('a product with ID 10 exists')
+  .query(gql`
+    query GetProduct($id: ID!) {
+      product(id: $id) {
+        id
+        name
+        status
+      }
+    }
+  `)
+  .operationName('GetProduct')
+  .variables({ id: '10' })
+  .willRespondWith({
+    data: { product: { id: '10', name: 'product name', status: 'ACTIVE' } },
+  })
+  .executeTest(async (client) => {
+    // `client` is bound to the mock server, the configured path and content type, and replays
+    // exactly what this interaction declared — so the request under test and the expectation
+    // cannot drift.
+    const { data } = await client.execute();
+    expect(data.product.id).toBe('10');
+  });
+```
+
+What the plugin does with that:
+
+- **Validates the query** against the schema at pact-write time.
+- **Validates the variables** against the operation's declared variable definitions — a missing
+  `$id`, a `String` where an `Int` is declared, or a value outside an enum are all rejected.
+- **Validates the expected response** against the schema and the query's selection set.
+- **Derives matching rules** from the schema — `match: type` for scalars, a `match: regex` over
+  the enum's values for enum fields — so the response is matched by type, not by literal equality.
+- **Compares queries on the AST**, so formatting, comments and fragment structure do not cause
+  spurious mismatches.
+
+### Options
+
+| Call | Purpose |
+|------|---------|
+| `graphql(pact, { schema, path, transport, pluginVersion })` | Per-pact setup. `path` defaults to `/graphql`. |
+| `.given(state)` | Provider state; may be called more than once. |
+| `.query(document)` / `.operationName(name)` / `.variables(vars)` | The operation. Passed to the plugin verbatim — canonicalisation is the plugin's job. |
+| `.matching('exact' \| 'semantic' \| 'subset')` | Query comparison mode. Defaults to the core's `semantic`. `subset` lets the actual query request fewer fields than expected. |
+| `.willRespondWith(body, status?)` | Expected GraphQL envelope. Status defaults to `200`. |
+| `.executeTest(fn)` / `.build()` | Run the interaction, or configure it without running (useful for asserting rejections). |
+
+### Rejections surface as test failures
+
+Requires `@pact-foundation/pact` >= 17.1.4 (`pact-core` >= 20.1.1). Earlier versions discarded the
+FFI status code, so a plugin rejection was silently recorded as an interaction with an empty part
+and the test still passed (fixed by pact-foundation/pact-js-core#956).
+
+```ts
+await expect(
+  api.interaction('an invalid query')
+    .query(gql`query GetProduct($id: ID!) { product(id: $id) { id stockLevel } }`)
+    .variables({ id: '10' })
+    .build(),
+).rejects.toThrow(/stockLevel/);
+```
+
+The thrown message carries the plugin's own diagnosis:
+
+```
+Failed to set plugin interaction contents for content type 'application/graphql':
+the plugin returned an error: ... message: "GraphQL query validation failed:
+field `stockLevel` does not exist on type `Product`"
+```
+
+Note that validation runs when the plugin *contents* are set, not when the plugin is loaded — so
+`graphqlInteraction` alone (which only calls `usingPlugin`) does not trigger it. The DSL's
+`.build()` / `.executeTest()` and `graphqlHttpInteraction` both do.
+
+## Legacy helper API
+
+`graphqlInteraction` / `graphqlHttpInteraction` remain available and are still exercised by
+`examples/js/product-consumer/pact.test.ts`. New tests should prefer the DSL above.
+
+
 ```bash
 npm install --save-dev @pact-foundation/pact @pact-foundation/pact-graphql-helper
 ```
@@ -146,7 +238,7 @@ npm run test
 
 ### Bundling commands
 
-- `just bundle target=<triple>` builds the release binary for the specified target, copies it into `dist/<triple>/pact-graphql-plugin[.exe]`, rewrites `pact-plugin.json` with the current version, and emits a gzip + `.sha256` pair named `pact-graphql-plugin-<os>-<arch>[.exe].gz` under the same directory.
+- `just bundle <triple>` (the `target=<triple>` spelling also works) builds the release binary for the specified target, copies it into `dist/<triple>/pact-graphql-plugin[.exe]`, rewrites `pact-plugin.json` with the current version, and emits a gzip + `.sha256` pair named `pact-graphql-plugin-<os>-<arch>[.exe].gz` under the same directory.
 - `just bundle-all` iterates over every entry in `SUPPORTED_TARGETS` and invokes the recipe above, producing a complete `dist/` tree in one go.
 
 Each run is idempotent: rerunning a bundle overwrites the staged binary, manifest, archive, and checksum for that target.
