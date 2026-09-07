@@ -6,7 +6,9 @@ version:
 	@printf "%s\n" "{{PLUGIN_VERSION}}"
 
 target-label target="":
-	@case "{{target}}" in \
+	@target_value="{{target}}"; \
+	target_value="${target_value#target=}"; \
+	case "$target_value" in \
 		x86_64-apple-darwin) \
 			label=macos-x86_64 \
 			;; \
@@ -27,7 +29,7 @@ target-label target="":
 			;; \
 		*) \
 			SUPPORTED_LIST=$(printf "%s" '{{SUPPORTED_TARGETS}}' | jq -r '.[]' | paste -sd "," - | sed 's/,/, /g'); \
-			printf >&2 "unsupported target '%s'. Supported targets: %s\n" "{{target}}" "$SUPPORTED_LIST"; \
+			printf >&2 "unsupported target '%s'. Supported targets: %s\n" "$target_value" "$SUPPORTED_LIST"; \
 			exit 1 \
 			;; \
 		esac; \
@@ -35,24 +37,26 @@ target-label target="":
 
 bundle target="":
 	@set -euo pipefail; \
-	if [ -z "{{target}}" ]; then \
-		printf >&2 "target argument required (e.g. just bundle target=x86_64-apple-darwin)\n"; \
+	target_value="{{target}}"; \
+	target_value="${target_value#target=}"; \
+	if [ -z "$target_value" ]; then \
+		printf >&2 "target argument required (e.g. just bundle x86_64-apple-darwin)\n"; \
 		exit 1; \
 	fi; \
-	label=$(just target-label {{target}}); \
+	label=$(just target-label "$target_value"); \
 	exe_suffix=; \
-	case "{{target}}" in \
+	case "$target_value" in \
 		*-pc-windows-msvc) exe_suffix=.exe ;; \
 		*) exe_suffix= ;; \
 	esac; \
-	printf "Building pact-graphql-plugin for %s...\n" "{{target}}"; \
-	cargo build --release --target "{{target}}"; \
-	bin_path="target/{{target}}/release/pact_graphql_plugin$exe_suffix"; \
+	printf "Building pact-graphql-plugin for %s...\n" "$target_value"; \
+	cargo build --release --target "$target_value"; \
+	bin_path="target/$target_value/release/pact_graphql_plugin$exe_suffix"; \
 	if [ ! -f "$bin_path" ]; then \
 		printf >&2 "expected binary not found at %s\n" "$bin_path"; \
 		exit 1; \
 	fi; \
-	dist_dir="dist/{{target}}"; \
+	dist_dir="dist/$target_value"; \
 	mkdir -p "$dist_dir"; \
 	stage_bin="$dist_dir/pact-graphql-plugin$exe_suffix"; \
 	cp "$bin_path" "$stage_bin"; \
@@ -81,7 +85,7 @@ bundle-all:
 	IFS=$'\n'
 	for target in $targets; do \
 		printf "\n>> bundling %s\n" "$target"; \
-		just bundle target="$target"; \
+		just bundle "$target"; \
 	done
 	unset IFS
 
@@ -112,10 +116,8 @@ install:
 	archive="$dist_dir/pact-graphql-plugin-$label$exe_suffix.gz"; \
 	manifest="$dist_dir/pact-plugin.json"; \
 	binary_name="pact-graphql-plugin$exe_suffix"; \
-	if [ ! -f "$archive" ] || [ ! -f "$manifest" ]; then \
-		printf "%s\n" "Host bundle missing; building $host_target"; \
-		just bundle target="$host_target"; \
-	fi; \
+	printf "%s\n" "Building host bundle for $host_target"; \
+	just bundle "$host_target"; \
 	tmp_dir=$(mktemp -d); \
 	cleanup() { rm -rf "$tmp_dir"; }; \
 	trap cleanup EXIT INT TERM; \
@@ -127,6 +129,10 @@ install:
 	esac; \
 	install_root="$HOME/.pact/plugins/graphql-{{PLUGIN_VERSION}}"; \
 	mkdir -p "$install_root"; \
+	rm -f "$install_root/$binary_name"; \
 	cp "$tmp_dir/$binary_name" "$install_root/$binary_name"; \
 	cp "$tmp_dir/pact-plugin.json" "$install_root/pact-plugin.json"; \
+	if command -v codesign >/dev/null 2>&1; then \
+		codesign --force --sign - "$install_root/$binary_name" >/dev/null 2>&1 || true; \
+	fi; \
 	printf "Installed GraphQL plugin for %s at %s\n" "$host_target" "$install_root"
