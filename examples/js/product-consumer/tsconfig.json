@@ -5,9 +5,16 @@
     "moduleResolution": "node",
     "esModuleInterop": true,
     "strict": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "skipLibCheck": true,
-    "lib": ["ES2020", "DOM"]
+    "lib": [
+      "ES2020",
+      "DOM"
+    ]
   },
-  "include": ["pact.test.ts"]
+  "include": [
+    "*.ts"
+  ]
 }

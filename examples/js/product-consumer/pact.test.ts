@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 import { PactV4 } from '@pact-foundation/pact';
-import { buildSchema, parse, validate, isObjectType } from 'graphql';
 import { graphqlHttpInteraction, graphqlInteraction, graphqlRequestBody } from 'pact-graphql-helper';
 
 process.env.PACT_GRAPHQL_PLUGIN_VERSION ??= '0.1.0';
@@ -18,18 +17,6 @@ const query = `
     }
   }
 `;
-
-const graphqlSchema = buildSchema(schema);
-// pact-js doesn't surface plugin validation errors, so validate queries locally.
-const validateQuery = (source: string) => validate(graphqlSchema, parse(source));
-const getUnknownFields = (typeName: string, value: Record<string, unknown>) => {
-  const type = graphqlSchema.getType(typeName);
-  if (!type || !isObjectType(type)) {
-    throw new Error(`Expected ${typeName} to be an object type in schema`);
-  }
-  const fields = type.getFields();
-  return Object.keys(value).filter((field) => !fields[field]);
-};
 
 const postGraphqlRequest = async (mockServer: { url: string }, request: unknown) =>
   fetch(`${mockServer.url}/graphql`, {
@@ -333,11 +320,21 @@ describe('GraphQL pact', () => {
         }
       `;
 
-      const errors = validateQuery(invalidQuery);
-      expect(errors).not.toHaveLength(0);
-      expect(errors.some((error) => /Cannot query field "stockLevel"/.test(error.message))).toBe(
-        true,
-      );
+      const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider-invalid' });
+      const interaction = pact.addInteraction();
+      interaction.uponReceiving('a query selecting an unknown field');
+
+      // Asserts on the *plugin's* rejection, not a local `validate()` call.
+      // `graphqlHttpInteraction`, not `graphqlInteraction`: validation runs when the plugin
+      // *contents* are set (`pactffi_interaction_contents`), not when the plugin is loaded by
+      // `usingPlugin`, so the bare configure call never reaches the plugin's validation.
+      await expect(
+        graphqlHttpInteraction(interaction, {
+          schema,
+          query: invalidQuery,
+          variables: { id: '10' },
+        }),
+      ).rejects.toThrow(/stockLevel/);
     });
 
     it('rejects invalid enum values', async () => {
@@ -351,14 +348,13 @@ describe('GraphQL pact', () => {
         }
       `;
 
-      const errors = validateQuery(invalidEnumQuery);
-      expect(errors).not.toHaveLength(0);
-      expect(
-        errors.some(
-          (error) =>
-            error.message.includes('ProductStatus') && error.message.includes('DISCONTINUED'),
-        ),
-      ).toBe(true);
+      const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider-invalid' });
+      const interaction = pact.addInteraction();
+      interaction.uponReceiving('a query with an invalid enum argument');
+
+      await expect(
+        graphqlHttpInteraction(interaction, { schema, query: invalidEnumQuery }),
+      ).rejects.toThrow(/DISCONTINUED/);
     });
   });
 
@@ -434,8 +430,6 @@ describe('GraphQL pact', () => {
     });
   });
 
-  // TODO(plan-2): once the JS DSL forwards response_body_json to the plugin, this
-  // assertion moves to the plugin and this local check can be deleted.
   describe('response not in schema', () => {
     it('rejects responses with unknown fields', async () => {
       const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider-negative' });
@@ -444,43 +438,26 @@ describe('GraphQL pact', () => {
       interaction.given('a product with ID 10 exists');
       interaction.uponReceiving('a GraphQL product request with extra response fields');
 
-      const responseInteraction = await graphqlHttpInteraction(interaction, {
-        schema,
-        query,
-        variables: { id: '10' },
-        operationName: 'GetProduct',
-      });
-
-      const responseBody = {
-        data: {
-          product: {
-            id: '10',
-            name: 'product name',
-            status: 'ACTIVE',
-            internalSku: 'INT-001',
+      // Routed through the plugin via `response`, so the violation is caught by the plugin's
+      // schema/selection-set validation rather than a local check that still wrote a bad pact.
+      await expect(
+        graphqlHttpInteraction(interaction, {
+          schema,
+          query,
+          variables: { id: '10' },
+          operationName: 'GetProduct',
+          response: {
+            data: {
+              product: {
+                id: '10',
+                name: 'product name',
+                status: 'ACTIVE',
+                internalSku: 'INT-001',
+              },
+            },
           },
-        },
-      };
-
-      // Pact JS doesn't surface response schema violations; validate locally.
-      const unknownFields = getUnknownFields('Product', responseBody.data.product);
-      expect(unknownFields).toEqual(['internalSku']);
-
-      await responseInteraction
-        .willRespondWith(200, (builder) => {
-          builder.headers({ 'content-type': 'application/json' });
-          builder.jsonBody(responseBody);
-        })
-        .executeTest(async (mockServer) => {
-          await postGraphqlRequest(
-            mockServer,
-            graphqlRequestBody({
-              query,
-              variables: { id: '10' },
-              operationName: 'GetProduct',
-            }),
-          );
-        });
+        }),
+      ).rejects.toThrow(/internalSku/);
     });
   });
 });

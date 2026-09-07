@@ -6,7 +6,9 @@
   "scripts": {
     "message": "vitest run subscription-message.test.ts",
     "test": "vitest run",
-    "verify": "vitest run verify-provider.test.ts"
+    "verify": "vitest run --config vitest.verify.config.ts",
+    "test:all": "npm test && npm run verify",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -14,10 +16,10 @@
   "type": "commonjs",
   "devDependencies": {
     "@apollo/server": "^4.12.2",
-    "@pact-foundation/pact": "^16.2.0",
-    "@types/node": "^25.3.3",
-    "@types/express": "^4.17.22",
+    "@pact-foundation/pact": "^17.1.4",
     "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.22",
+    "@types/node": "^25.3.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "graphql": "^16.11.0",
