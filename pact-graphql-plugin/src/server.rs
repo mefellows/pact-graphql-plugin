@@ -511,10 +511,10 @@ impl PactPlugin for GraphqlPlugin {
 
 pub async fn run() -> Result<()> {
     let plugin = GraphqlPlugin::new()?;
-    let host = std::env::var("PACT_PLUGIN_HOST").unwrap_or_else(|_| "[::1]".to_string());
+    let address = bind_address(std::env::var("PACT_GRAPHQL_PLUGIN_BIND").ok().as_deref());
     write_log_marker("run called");
-    debug!(%host, "run: binding GraphQL plugin server");
-    let listener = TcpListener::bind(format!("{}:0", host)).await?;
+    debug!(%address, "run: binding GraphQL plugin server");
+    let listener = TcpListener::bind(&address).await?;
     let address: SocketAddr = listener.local_addr()?;
     debug!(%address, "run: GraphQL plugin listening");
     let server_key = Uuid::new_v4().to_string();
@@ -601,6 +601,37 @@ fn schema_indicator(config: &GraphqlPluginConfig) -> Option<String> {
         .schema_ref
         .as_ref()
         .map(|reference| reference.hash.clone())
+}
+
+/// Resolves the address the plugin's gRPC server listens on.
+///
+/// Deliberately does **not** read `PACT_PLUGIN_HOST`. That variable is set by the plugin driver to
+/// the address of *its own* PluginHost log-forwarding server
+/// (`pact-plugins/drivers/rust/driver/src/grpc_plugin.rs`: `env("PACT_PLUGIN_HOST",
+/// format!("127.0.0.1:{}", port))`) — an address a plugin may connect to, never one to bind to.
+/// This plugin previously used it as a bind host, which worked only because older driver versions
+/// left it unset. Once the driver began setting it, the plugin bound to the driver's own port and
+/// died with "Address already in use" before printing its startup message, so the driver reported
+/// only "did not output the correct startup message in 60 seconds".
+///
+/// `PACT_GRAPHQL_PLUGIN_BIND` overrides the default, accepting either a bare host (given an
+/// ephemeral port) or a full socket address. The port actually bound is read back from the
+/// listener, so an ephemeral port is still reported correctly.
+fn bind_address(override_value: Option<&str>) -> String {
+    let host = override_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    match host {
+        Some(value) => {
+            if value.parse::<SocketAddr>().is_ok() {
+                value.to_string()
+            } else {
+                format!("{value}:0")
+            }
+        }
+        None => "[::1]:0".to_string(),
+    }
 }
 
 fn default_content_type(transport: &Transport) -> String {
@@ -772,13 +803,20 @@ fn config_from_pact(pact_json: &str, interaction_key: &str) -> Result<GraphqlPlu
     let plugin_config = interaction
         .get("pluginConfiguration")
         .and_then(|cfg| cfg.get(PLUGIN_NAME))
-        .and_then(|cfg| cfg.get("interactionConfiguration"))
         .ok_or_else(|| {
             anyhow!(
                 "plugin configuration for '{}' not found in pact interaction",
                 PLUGIN_NAME
             )
         })?;
+
+    // `pact_models` serialises `plugin_config` as `HashMap<String, HashMap<String, Value>>`, so
+    // the config sits *flat* under the plugin name in every pact file written by pact_ffi. The
+    // nested `interactionConfiguration` form is what the gRPC `PluginConfiguration` message uses;
+    // accept it too so a pact produced from that shape by other tooling still verifies.
+    let plugin_config = plugin_config
+        .get("interactionConfiguration")
+        .unwrap_or(plugin_config);
 
     let config: GraphqlPluginConfig = serde_json::from_value(plugin_config.clone())
         .context("failed to deserialize plugin configuration from pact")?;
@@ -819,7 +857,10 @@ fn default_schema_root() -> Result<PathBuf> {
 fn write_log_marker(_message: &str) {}
 
 fn to_status(err: anyhow::Error) -> Status {
-    Status::invalid_argument(err.to_string())
+    // `{:#}` walks the context chain, so the message that reaches the caller says *why* the
+    // request was rejected ("... : variable `$id` is declared as `ID!` but no value was
+    // supplied") rather than just the outermost context.
+    Status::invalid_argument(format!("{err:#}"))
 }
 
 fn is_validation_error(err: &anyhow::Error) -> bool {
@@ -924,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    fn serializes_inline_schema_back_to_legacy_field() {
+    fn serializes_the_schema_exactly_once() {
         let config = GraphqlPluginConfig {
             query_document: "query".into(),
             operation_name: None,
@@ -945,11 +986,41 @@ mod tests {
             response_body_json: None,
         };
         let json_value = serde_json::to_value(&config).unwrap();
+        // The SDL is written once, under `inline_schema`. The legacy `schema_inline_base64`
+        // duplicate is no longer emitted (see `GraphqlPluginConfigWire::from`); it is still
+        // *read*, which `deserializes_legacy_schema_inline_base64` covers.
         assert_eq!(
             json_value
-                .get("schema_inline_base64")
+                .get("inline_schema")
+                .and_then(|schema| schema.get("base64_sdl"))
                 .and_then(|v| v.as_str()),
             Some("dGVzdA==")
+        );
+        assert!(
+            json_value
+                .get("schema_inline_base64")
+                .map_or(true, |v| v.is_null()),
+            "legacy duplicate should not be written"
+        );
+    }
+
+    #[test]
+    fn deserializes_legacy_schema_inline_base64() {
+        let value = json!({
+            "query_document": "query",
+            "transport": "json_body",
+            "schema_inline_base64": "dGVzdA==",
+        });
+
+        let config: GraphqlPluginConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(
+            config
+                .inline_schema
+                .as_ref()
+                .and_then(|schema| schema.base64_sdl.as_deref()),
+            Some("dGVzdA=="),
+            "a pact recorded before the de-duplication must still verify"
         );
     }
 
@@ -1353,6 +1424,135 @@ mod tests {
             pact: pact_json,
             interaction_key: interaction_key.to_string(),
         }
+    }
+
+    /// The shape `pact_models` actually serialises: the plugin's config sits flat under the
+    /// plugin name, with no `interactionConfiguration` wrapper
+    /// (`pact_models/src/v4/synch_http.rs`, `map.insert("pluginConfiguration", ...)`).
+    /// Verified against `examples/js/product-consumer/pacts/`.
+
+    #[test]
+    fn config_from_pact_reads_flat_plugin_configuration() {
+        let config = sample_plugin_config();
+        let interaction_key = "flat-key";
+        let pact_json = pact_with_flat_config(&config, interaction_key);
+
+        let parsed = config_from_pact(&pact_json, interaction_key)
+            .expect("flat pluginConfiguration should be readable");
+
+        assert_eq!(parsed.query_document, config.query_document);
+        assert_eq!(parsed.operation_name, config.operation_name);
+        assert_eq!(parsed.variables_json, config.variables_json);
+    }
+
+    #[test]
+    fn config_from_pact_still_reads_nested_plugin_configuration() {
+        let config = sample_plugin_config();
+        let interaction_key = "nested-key";
+        let pact_json = pact_with_config(&config, interaction_key);
+
+        let parsed = config_from_pact(&pact_json, interaction_key)
+            .expect("nested interactionConfiguration should still be readable");
+
+        assert_eq!(parsed.query_document, config.query_document);
+    }
+
+
+    /// Guards against the whole class of bug this fixture exists for: the hand-built
+    /// `pact_with_config` helper below constructs a shape by hand, so it can only prove the code
+    /// is self-consistent. This one reads a pact file actually produced by `pact_ffi` (captured
+    /// from `examples/js/product-consumer`), so it proves the code is *correct*.
+    #[test]
+    fn config_from_pact_reads_a_pact_written_by_pact_ffi() {
+        let pact_json = include_str!("../tests/fixtures/pact-ffi-written.json");
+
+        let parsed = config_from_pact(pact_json, "real-pact-key")
+            .expect("a pact written by pact_ffi should be readable");
+
+        assert_eq!(parsed.operation_name.as_deref(), Some("GetProduct"));
+        assert!(
+            parsed.query_document.contains("product(id: $id)"),
+            "expected the recorded query document, got: {}",
+            parsed.query_document
+        );
+        assert!(
+            parsed.inline_schema.is_some(),
+            "expected the inline schema to survive the round trip"
+        );
+    }
+
+
+    #[test]
+    fn to_status_includes_the_cause_chain() {
+        // `anyhow`'s Display prints only the outermost context, so a bare `err.to_string()` sends
+        // "GraphQL query validation failed" over gRPC and drops the one line that says *why*.
+        let err = anyhow!("variable `$id` is declared as `ID!` but no value was supplied")
+            .context("GraphQL query validation failed");
+
+        let status = to_status(err);
+
+        assert!(
+            status.message().contains("GraphQL query validation failed"),
+            "got: {}",
+            status.message()
+        );
+        assert!(
+            status.message().contains("$id"),
+            "the cause should survive: {}",
+            status.message()
+        );
+    }
+
+
+    #[test]
+    fn bind_address_defaults_to_ipv6_loopback_on_an_ephemeral_port() {
+        assert_eq!(bind_address(None), "[::1]:0");
+    }
+
+    #[test]
+    fn bind_address_appends_an_ephemeral_port_to_a_bare_host() {
+        assert_eq!(bind_address(Some("127.0.0.1")), "127.0.0.1:0");
+        assert_eq!(bind_address(Some("[::1]")), "[::1]:0");
+    }
+
+    #[test]
+    fn bind_address_uses_an_explicit_host_and_port_verbatim() {
+        assert_eq!(bind_address(Some("127.0.0.1:8080")), "127.0.0.1:8080");
+        assert_eq!(bind_address(Some("[::1]:8080")), "[::1]:8080");
+    }
+
+    #[test]
+    fn the_drivers_log_forwarding_host_is_not_used_as_a_bind_address() {
+        // `PACT_PLUGIN_HOST` is the driver's own PluginHost address. Binding to it means binding
+        // to a port the driver already holds; the plugin then dies with "Address already in use"
+        // before it can print its startup message. Guarded here because the failure surfaces only
+        // as an opaque driver timeout, which cost real time to diagnose.
+        std::env::set_var("PACT_PLUGIN_HOST", "127.0.0.1:64826");
+        let address = bind_address(std::env::var("PACT_GRAPHQL_PLUGIN_BIND").ok().as_deref());
+        std::env::remove_var("PACT_PLUGIN_HOST");
+
+        assert_ne!(address, "127.0.0.1:64826");
+        assert_eq!(address, "[::1]:0");
+    }
+
+    #[test]
+    fn bind_address_ignores_a_blank_value() {
+        assert_eq!(bind_address(Some("   ")), "[::1]:0");
+    }
+
+    fn pact_with_flat_config(config: &GraphqlPluginConfig, interaction_key: &str) -> String {
+        let config_value = serde_json::to_value(config).expect("config to JSON");
+        serde_json::json!({
+            "interactions": [
+                {
+                    "key": interaction_key,
+                    "pluginConfiguration": {
+                        PLUGIN_NAME: config_value
+                    }
+                }
+            ]
+        })
+        .to_string()
     }
 
     fn pact_with_config(config: &GraphqlPluginConfig, interaction_key: &str) -> String {

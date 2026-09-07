@@ -8,7 +8,32 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     init_tracing();
-    server::run().await
+
+    // A plugin that fails before printing its startup message tells the driver only that no
+    // message arrived in 60 seconds; the reason goes to stderr, which the driver discards. Record
+    // it in the plugin's own log so a failure to start is diagnosable.
+    let result = server::run().await;
+    if let Err(err) = &result {
+        if let Some((_, log_path)) = log_file_appender() {
+            write_startup_failure(&log_path, err);
+        }
+    }
+    result
+}
+
+fn write_startup_failure(path: &PathBuf, err: &anyhow::Error) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "startup failed: {err:#}");
+        let cwd = std::env::current_dir()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_else(|_| "<unknown>".to_string());
+        let _ = writeln!(file, "  cwd={cwd}");
+    }
 }
 
 fn init_tracing() {
@@ -88,9 +113,11 @@ fn write_env_marker(path: &PathBuf) {
         let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "<unset>".to_string());
         let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "<unset>".to_string());
         let plugin_dir = std::env::var("PACT_PLUGIN_DIR").unwrap_or_else(|_| "<unset>".to_string());
+        let plugin_host = std::env::var("PACT_PLUGIN_HOST").unwrap_or_else(|_| "<unset>".to_string());
         let _ = writeln!(file, "env RUST_LOG={}", rust_log);
         let _ = writeln!(file, "env LOG_LEVEL={}", log_level);
         let _ = writeln!(file, "env PACT_PLUGIN_DIR={}", plugin_dir);
+        let _ = writeln!(file, "env PACT_PLUGIN_HOST={}", plugin_host);
     }
 }
 

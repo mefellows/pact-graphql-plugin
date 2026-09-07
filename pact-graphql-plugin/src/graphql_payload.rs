@@ -8,7 +8,7 @@ use base64::Engine;
 use graphql_parser::query::{
     parse_query, Definition as QueryDefinition, Document as QueryDocument, Field as QueryField,
     FragmentDefinition, FragmentSpread, InlineFragment, OperationDefinition, Selection,
-    SelectionSet, TypeCondition,
+    SelectionSet, TypeCondition, Value as GqlValue,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -95,8 +95,13 @@ impl CanonicalGraphqlRequest {
         if let Some(ref canonical_sdl) = canonical_schema {
             let schema_index = SchemaIndex::from_sdl(canonical_sdl)
                 .context("failed to parse GraphQL schema SDL")?;
-            validate_query_document(&schema_index, &query_document, operation_name.as_deref())
-                .context("GraphQL query validation failed")?;
+            validate_against_schema(
+                &schema_index,
+                &query_document,
+                operation_name.as_deref(),
+                variables_json.as_deref(),
+            )
+            .context("GraphQL query validation failed")?;
         }
 
         let inline_schema = canonical_schema.map(|canonical_sdl| GraphqlInlineSchema {
@@ -140,8 +145,13 @@ impl CanonicalGraphqlRequest {
         if let Some(ref canonical_sdl) = canonical_schema {
             let schema_index = SchemaIndex::from_sdl(canonical_sdl)
                 .context("failed to parse GraphQL schema SDL")?;
-            validate_query_document(&schema_index, &query_document, operation_name.as_deref())
-                .context("GraphQL query validation failed")?;
+            validate_against_schema(
+                &schema_index,
+                &query_document,
+                operation_name.as_deref(),
+                variables_json.as_deref(),
+            )
+            .context("GraphQL query validation failed")?;
         }
 
         let inline_schema = canonical_schema.map(|canonical_sdl| GraphqlInlineSchema {
@@ -442,6 +452,32 @@ fn is_schema_hash(value: &str) -> bool {
 
 pub(crate) type FragmentMap<'a> = HashMap<&'a str, &'a FragmentDefinition<'a, String>>;
 
+/// Runs every schema-aware check we can make at configure time: the selection set against the
+/// schema, and the supplied variables against the operation's declared variable definitions.
+fn validate_against_schema(
+    schema_index: &SchemaIndex,
+    query_document: &str,
+    operation_name: Option<&str>,
+    variables_json: Option<&str>,
+) -> anyhow::Result<()> {
+    validate_query_document(schema_index, query_document, operation_name)?;
+
+    // `validate_query_document` has already proved the document parses and is valid against the
+    // schema. `parse_and_inline` can still decline to pick an operation for a multi-operation
+    // document with no `operation_name`; there is no single set of variable definitions to check
+    // in that case, so skip rather than fail.
+    let Ok(operation) = crate::query_ast::parse_and_inline(query_document, operation_name) else {
+        return Ok(());
+    };
+
+    let variables: Option<Value> = variables_json
+        .map(serde_json::from_str)
+        .transpose()
+        .context("failed to parse GraphQL variables_json as JSON")?;
+
+    crate::variables::validate_variables(schema_index, &operation, variables.as_ref())
+}
+
 pub(crate) fn validate_query_document(
     schema_index: &SchemaIndex,
     query_document: &str,
@@ -674,7 +710,7 @@ fn validate_field_selection<'a>(
     let field_info = schema_index
         .field(parent_info, &field.name)
         .ok_or_else(|| unknown_field_error(parent_type, &field.name))?;
-    validate_field_arguments(field, field_info, parent_type)?;
+    validate_field_arguments(schema_index, field, field_info, parent_type)?;
     if let Some(next_type) = field_info.composite_type(schema_index) {
         if !has_subselection {
             bail!(
@@ -764,22 +800,156 @@ fn unknown_field_error(parent: &str, field: &str) -> anyhow::Error {
     anyhow!("field `{}` does not exist on type `{}`", field, parent)
 }
 
+/// Checks a literal argument value against the argument's declared type. Mirrors the input
+/// coercion rules applied to variables in `crate::variables`, over the query AST's value type
+/// rather than JSON.
+///
+/// A `$variable` reference is accepted here: the value it carries is checked against its own
+/// declaration separately.
+fn validate_argument_value(
+    schema_index: &SchemaIndex,
+    type_ref: &crate::schema_index::TypeRef,
+    value: &GqlValue<'_, String>,
+    arg_name: &str,
+    field_name: &str,
+    parent_type: &str,
+) -> anyhow::Result<()> {
+    let mismatch = |expected: &str| {
+        anyhow!(
+            "argument `{}` on field `{}` of type `{}` expects {}, but got {}",
+            arg_name,
+            field_name,
+            parent_type,
+            expected,
+            describe_ast_value(value)
+        )
+    };
+
+    if matches!(value, GqlValue::Variable(_)) {
+        return Ok(());
+    }
+
+    if matches!(value, GqlValue::Null) {
+        if type_ref.is_non_null() {
+            bail!(
+                "argument `{}` on field `{}` of type `{}` does not accept null",
+                arg_name,
+                field_name,
+                parent_type
+            );
+        }
+        return Ok(());
+    }
+
+    if let Some(item_type) = type_ref.as_list_item() {
+        let GqlValue::List(items) = value else {
+            return Err(mismatch("a list"));
+        };
+        for item in items {
+            validate_argument_value(
+                schema_index,
+                item_type,
+                item,
+                arg_name,
+                field_name,
+                parent_type,
+            )?;
+        }
+        return Ok(());
+    }
+
+    let Some(named) = type_ref.unwrap_non_null().innermost_named() else {
+        return Ok(());
+    };
+    let Some(info) = schema_index.type_info(named) else {
+        return Ok(());
+    };
+
+    match info {
+        TypeInfo::Enum(_) => {
+            let GqlValue::Enum(member) = value else {
+                return Err(mismatch(&format!("a value of enum `{named}`")));
+            };
+            if let Some(members) = schema_index.enum_values(named) {
+                if !members.contains(member.as_str()) {
+                    let mut allowed: Vec<&str> = members.iter().map(String::as_str).collect();
+                    allowed.sort_unstable();
+                    bail!(
+                        "argument `{}` on field `{}` of type `{}` is `{}`, which is not a value of enum `{}` (expected one of: {})",
+                        arg_name,
+                        field_name,
+                        parent_type,
+                        member,
+                        named,
+                        allowed.join(", ")
+                    );
+                }
+            }
+            Ok(())
+        }
+        TypeInfo::InputObject => match value {
+            GqlValue::Object(_) => Ok(()),
+            _ => Err(mismatch(&format!("input object `{named}`"))),
+        },
+        TypeInfo::Scalar => {
+            let ok = match named {
+                "Int" => matches!(value, GqlValue::Int(_)),
+                "Float" => matches!(value, GqlValue::Int(_) | GqlValue::Float(_)),
+                "String" => matches!(value, GqlValue::String(_)),
+                "ID" => matches!(value, GqlValue::String(_) | GqlValue::Int(_)),
+                "Boolean" => matches!(value, GqlValue::Boolean(_)),
+                // A custom scalar's literal representation is not described by the schema.
+                _ => true,
+            };
+            if ok {
+                Ok(())
+            } else {
+                Err(mismatch(&format!("a `{named}`")))
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+fn describe_ast_value(value: &GqlValue<'_, String>) -> &'static str {
+    match value {
+        GqlValue::Variable(_) => "a variable",
+        GqlValue::Int(_) => "an integer",
+        GqlValue::Float(_) => "a float",
+        GqlValue::String(_) => "a string",
+        GqlValue::Boolean(_) => "a boolean",
+        GqlValue::Null => "null",
+        GqlValue::Enum(_) => "an enum value",
+        GqlValue::List(_) => "a list",
+        GqlValue::Object(_) => "an object",
+    }
+}
+
 fn validate_field_arguments(
+    schema_index: &SchemaIndex,
     field: &QueryField<'_, String>,
     field_info: &FieldInfo,
     parent_type: &str,
 ) -> anyhow::Result<()> {
     let mut provided = HashSet::new();
-    for (name, _) in &field.arguments {
+    for (name, value) in &field.arguments {
         let arg_name = name.as_str();
-        if field_info.argument(arg_name).is_none() {
+        let Some(argument) = field_info.argument(arg_name) else {
             bail!(
                 "argument `{}` is not defined on field `{}` of type `{}`",
                 arg_name,
                 field.name,
                 parent_type
             );
-        }
+        };
+        validate_argument_value(
+            schema_index,
+            argument.type_ref(),
+            value,
+            arg_name,
+            &field.name,
+            parent_type,
+        )?;
         provided.insert(arg_name.to_string());
     }
 
@@ -868,12 +1038,43 @@ pub(crate) fn canonicalize_variables(
 ) -> anyhow::Result<Option<String>> {
     match variables_json {
         Some(raw) => {
-            let value: Value = serde_json::from_str(&raw)
+            let mut value: Value = serde_json::from_str(&raw)
                 .with_context(|| "failed to parse GraphQL variables_json as JSON")?;
+            sort_object_keys(&mut value);
             let canonical = serde_json::to_string(&value)?;
             Ok(Some(canonical))
         }
         None => Ok(None),
+    }
+}
+
+/// Recursively sorts object keys so that variables differing only in key order canonicalise
+/// identically. `variables_json` is compared as an exact string, and two objects with the same
+/// entries in different orders are the same GraphQL variables — without this, a client that
+/// builds variables from an unordered map (Go's `map[string]any`, say) would flake.
+///
+/// This cannot rely on `serde_json`'s default sorted `BTreeMap`, because this crate enables the
+/// `preserve_order` feature, which swaps in an insertion-ordered `IndexMap`.
+///
+/// Array order is left alone: it is semantically meaningful in GraphQL variables.
+fn sort_object_keys(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (_, entry) in map.iter_mut() {
+                sort_object_keys(entry);
+            }
+            let mut entries: Vec<(String, Value)> = std::mem::take(map).into_iter().collect();
+            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            for (key, entry) in entries {
+                map.insert(key, entry);
+            }
+        }
+        Value::Array(items) => {
+            for item in items.iter_mut() {
+                sort_object_keys(item);
+            }
+        }
+        _ => {}
     }
 }
 

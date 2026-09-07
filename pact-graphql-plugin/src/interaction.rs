@@ -24,31 +24,45 @@ pub struct GraphqlPluginConfig {
     pub response_body_json: Option<String>,
 }
 
+/// Wire form of the interaction configuration, as stored in the pact file.
+///
+/// Absent fields are omitted rather than written as `null`: every one of these appears in every
+/// interaction of every pact, and a missing `Option` deserialises to `None` regardless.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct GraphqlPluginConfigWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_document: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variables_json: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<Transport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_ref: Option<SchemaRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_inline_base64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inline_schema: Option<GraphqlInlineSchema>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request: Option<GraphqlRequestPayload>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_matching: Option<QueryMatching>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_body_json: Option<String>,
 }
 
 impl From<&GraphqlPluginConfig> for GraphqlPluginConfigWire {
     fn from(config: &GraphqlPluginConfig) -> Self {
-        let schema_inline_base64 = config.schema_inline_base64.clone().or_else(|| {
-            config
-                .inline_schema
-                .as_ref()
-                .and_then(|schema| schema.base64_sdl.clone())
-        });
+        // `inline_schema.base64_sdl` is the canonical home for the SDL. The legacy
+        // `schema_inline_base64` field held a byte-identical copy, doubling the largest thing in
+        // every interaction's plugin configuration, so it is no longer written — only read, by
+        // `Deserialize`, so that pacts recorded before this change still verify.
+        let schema_inline_base64 = if config.inline_schema.is_some() {
+            None
+        } else {
+            config.schema_inline_base64.clone()
+        };
         Self {
             query_document: Some(config.query_document.clone()),
             operation_name: config.operation_name.clone(),

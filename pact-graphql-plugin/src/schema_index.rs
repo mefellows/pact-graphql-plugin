@@ -761,6 +761,10 @@ pub(crate) struct InputValueInfo {
 }
 
 impl InputValueInfo {
+    pub(crate) fn type_ref(&self) -> &TypeRef {
+        &self.type_ref
+    }
+
     pub(crate) fn is_required(&self) -> bool {
         self.type_ref.is_non_null() && !self.has_default
     }

@@ -92,7 +92,9 @@ fn canonicalizes_request_payload() {
                 }
             "#
             .into(),
-            variables_json: Some(r#"{ "b": 2, "a": 1 }"#.into()),
+            // Deliberately out of key order, and carrying an extra variable the operation does
+            // not declare (which servers ignore), to pin canonicalisation behaviour.
+            variables_json: Some(r#"{ "b": 2, "id": "10", "a": 1 }"#.into()),
             operation_name: Some("GetProduct".into()),
             schema_sdl: Some(schema_sdl.into()),
             ..Default::default()
@@ -110,7 +112,12 @@ fn canonicalizes_request_payload() {
         .as_ref()
         .expect("canonical variables should be present");
     let variables_value: serde_json::Value = serde_json::from_str(canonical_variables).unwrap();
-    assert_eq!(variables_value, json!({ "a": 1, "b": 2 }));
+    assert_eq!(variables_value, json!({ "a": 1, "b": 2, "id": "10" }));
+    assert_eq!(
+        canonical_variables.as_str(),
+        r#"{"a":1,"b":2,"id":"10"}"#,
+        "object keys should be canonically sorted"
+    );
 
     let inline_schema_base64 = config
         .schema_inline_base64
@@ -358,4 +365,116 @@ fn fails_when_fragments_form_cycle() {
         "missing fragment cycle diagnostic. chain: {:?}",
         chain
     );
+}
+
+#[test]
+fn wire_config_carries_the_schema_exactly_once() {
+    // The SDL is the largest thing in a pact file. Carrying it in both `inline_schema.base64_sdl`
+    // and the legacy `schema_inline_base64` doubled every interaction's footprint; measured on
+    // examples/js/product-consumer that was 8 copies of a 3.8KB blob across 4 interactions.
+    let (_dir, builder) = build_builder();
+    let sdl = "type Query { hello: String }";
+
+    let config = builder
+        .build(GraphqlPluginRequest {
+            query_document: "query Q { hello }".into(),
+            operation_name: Some("Q".into()),
+            schema_sdl: Some(sdl.into()),
+            ..GraphqlPluginRequest::default()
+        })
+        .expect("build config");
+
+    let wire = serde_json::to_value(&config).expect("serialize config");
+
+    assert!(
+        wire.get("inline_schema")
+            .and_then(|schema| schema.get("base64_sdl"))
+            .and_then(|sdl| sdl.as_str())
+            .is_some(),
+        "inline_schema.base64_sdl is the canonical home for the SDL"
+    );
+    assert!(
+        wire.get("schema_inline_base64").map_or(true, |v| v.is_null()),
+        "the legacy duplicate must no longer be written, got: {wire:#}"
+    );
+}
+
+#[test]
+fn wire_config_still_reads_the_legacy_schema_field() {
+    // Pacts written before the duplicate was dropped must keep verifying.
+    let legacy = json!({
+        "query_document": "query Q { hello }",
+        "operation_name": "Q",
+        "transport": "json_body",
+        "schema_inline_base64": BASE64_STANDARD.encode("type Query { hello: String }"),
+    });
+
+    let config: pact_graphql_plugin::GraphqlPluginConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+
+    assert!(
+        config.inline_schema.is_some(),
+        "the legacy field should still populate the inline schema"
+    );
+}
+
+#[test]
+fn rejects_variables_that_do_not_satisfy_the_operations_declarations() {
+    let (_dir, builder) = build_builder();
+    let sdl = "schema { query: Query }\ntype Product { id: ID! }\ntype Query { product(id: ID!): Product }";
+
+    let err = builder
+        .build(GraphqlPluginRequest {
+            query_document: "query GetProduct($id: ID!) { product(id: $id) { id } }".into(),
+            operation_name: Some("GetProduct".into()),
+            // The author typo'd the variable name, so `$id` is never supplied.
+            variables_json: Some(r#"{"productId":"10"}"#.into()),
+            schema_sdl: Some(sdl.into()),
+            ..GraphqlPluginRequest::default()
+        })
+        .expect_err("a missing required variable should be rejected at configure time");
+
+    let message = format!("{err:#}");
+    assert!(message.contains("$id"), "error should name the variable, got: {message}");
+}
+
+#[test]
+fn accepts_variables_that_satisfy_the_operations_declarations() {
+    let (_dir, builder) = build_builder();
+    let sdl = "schema { query: Query }\ntype Product { id: ID! }\ntype Query { product(id: ID!): Product }";
+
+    builder
+        .build(GraphqlPluginRequest {
+            query_document: "query GetProduct($id: ID!) { product(id: $id) { id } }".into(),
+            operation_name: Some("GetProduct".into()),
+            variables_json: Some(r#"{"id":"10"}"#.into()),
+            schema_sdl: Some(sdl.into()),
+            ..GraphqlPluginRequest::default()
+        })
+        .expect("well-formed variables should be accepted");
+}
+
+#[test]
+fn wire_config_omits_absent_fields_rather_than_writing_nulls() {
+    // Null keys are noise in every interaction of every pact file. They carry no information the
+    // absent key does not, and `serde` deserialises a missing `Option` field to `None` anyway.
+    let (_dir, builder) = build_builder();
+
+    let config = builder
+        .build(GraphqlPluginRequest {
+            query_document: "query Q { hello }".into(),
+            ..GraphqlPluginRequest::default()
+        })
+        .expect("build config");
+
+    let wire = serde_json::to_value(&config).expect("serialize config");
+    let object = wire.as_object().expect("config serialises to an object");
+
+    let nulls: Vec<&String> = object
+        .iter()
+        .filter(|(_, value)| value.is_null())
+        .map(|(key, _)| key)
+        .collect();
+
+    assert!(nulls.is_empty(), "expected no null keys, found: {nulls:?}");
 }
