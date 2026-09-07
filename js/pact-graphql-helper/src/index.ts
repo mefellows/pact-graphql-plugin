@@ -1,13 +1,16 @@
 import type {
-  GraphqlHttpInteractionBuilder,
-  GraphqlHttpRequestBuilder,
-  GraphqlHttpResponseBuilder,
+  GraphqlAsyncMessageBuilder,
   GraphqlAsyncMessageWithPluginContents,
+  GraphqlInteractionWithPlugin,
+  GraphqlInteractionWithPluginRequest,
+  GraphqlInteractionWithPluginResponse,
   GraphqlMessageOptions,
   GraphqlMessagePactBuilder,
   GraphqlRequestOptions,
+  GraphqlRequestWithPluginBuilder,
+  GraphqlResponseWithPluginBuilder,
   GraphqlTransport,
-  PluginCapableInteractionBuilder,
+  GraphqlUnconfiguredInteraction,
 } from './types';
 
 const GRAPHQL_RESPONSE_CONTENT_TYPE = 'application/graphql-response';
@@ -106,33 +109,56 @@ function buildGraphqlConfiguration(options: GraphqlRequestOptions) {
   };
 }
 
-export async function graphqlInteraction<T = unknown>(
-  builder: PluginCapableInteractionBuilder<T>,
+/**
+ * Loads the GraphQL plugin for an interaction.
+ *
+ * Note this does **not** send any configuration to the plugin: pact-js's `usingPlugin` only calls
+ * `addPlugin(plugin, version)` and its `PluginConfig` has no `configuration` field, so the plugin
+ * is not consulted until the interaction *contents* are set. Schema and query validation therefore
+ * do not run here.
+ *
+ * @deprecated Prefer `graphql()` (see `./dsl`), or `graphqlHttpInteraction` for the older API.
+ */
+export function graphqlInteraction(
+  builder: GraphqlUnconfiguredInteraction,
   options: GraphqlRequestOptions,
-): Promise<T> {
-  const configuration = buildGraphqlConfiguration(options);
-
-  const version = process.env.PACT_GRAPHQL_PLUGIN_VERSION ?? '0.0.0';
+): GraphqlInteractionWithPlugin {
+  // Validates the options eagerly so a malformed call still fails here rather than silently.
+  buildGraphqlConfiguration(options);
 
   return builder.usingPlugin({
     plugin: 'graphql',
-    version,
-    configuration,
+    version: pluginVersion(),
   });
 }
 
-export async function graphqlHttpInteraction<T = unknown>(
-  interaction: GraphqlHttpInteractionBuilder<T> &
-    PluginCapableInteractionBuilder<GraphqlHttpInteractionBuilder<T>>,
+function pluginVersion(): string {
+  return process.env.PACT_GRAPHQL_PLUGIN_VERSION ?? '0.1.0';
+}
+
+export async function graphqlHttpInteraction(
+  interaction: GraphqlUnconfiguredInteraction,
+  options: GraphqlRequestOptions & { response: unknown },
+): Promise<GraphqlInteractionWithPluginResponse>;
+export async function graphqlHttpInteraction(
+  interaction: GraphqlUnconfiguredInteraction,
   options: GraphqlRequestOptions,
-): Promise<T> {
-  const pluginInteraction = await graphqlInteraction(interaction, options);
+): Promise<GraphqlInteractionWithPluginRequest>;
+export async function graphqlHttpInteraction(
+  interaction: GraphqlUnconfiguredInteraction,
+  options: GraphqlRequestOptions,
+): Promise<GraphqlInteractionWithPluginRequest | GraphqlInteractionWithPluginResponse> {
   const configuration = buildGraphqlConfiguration(options);
+
+  const pluginInteraction = interaction.usingPlugin({
+    plugin: 'graphql',
+    version: pluginVersion(),
+  });
 
   const withRequestResult = pluginInteraction.withRequest(
     'POST',
     '/graphql',
-    (builder: GraphqlHttpRequestBuilder) => {
+    (builder: GraphqlRequestWithPluginBuilder) => {
       builder.headers({ 'content-type': 'application/graphql' });
       builder.pluginContents('application/graphql', JSON.stringify(configuration));
     },
@@ -148,13 +174,16 @@ export async function graphqlHttpInteraction<T = unknown>(
   const responseConfiguration = {
     query_document: configuration.query_document,
     operation_name: configuration.operation_name,
+    // Carried so the plugin sees the operation's declared variables as satisfied; without it the
+    // whole interaction is rejected for an unsatisfied `$id: ID!`.
+    variables_json: configuration.variables_json,
     schema_sdl: configuration.schema_sdl,
     response_body_json: JSON.stringify(options.response),
   };
 
   return withRequestResult.willRespondWith(
     options.status ?? 200,
-    (builder: GraphqlHttpResponseBuilder) => {
+    (builder: GraphqlResponseWithPluginBuilder) => {
       // Set BEFORE pluginContents: without an explicit content-type header, pact_ffi's HTTP
       // callback falls back to the content type passed to the FFI call itself
       // (application/graphql-response), which is wrong on the wire.
@@ -190,29 +219,44 @@ export async function graphqlMessageInteraction<T = unknown>(
   }
 
   const interaction = pact.addAsynchronousInteraction();
+  // `usingPlugin` only loads the plugin; the configuration reaches it via `withPluginContents`
+  // below. pact-js's `PluginConfig` has no `configuration` field, so passing one here was a no-op.
   const pluginInteraction = interaction.usingPlugin({
     plugin: 'graphql',
-    version: process.env.PACT_GRAPHQL_PLUGIN_VERSION ?? '0.0.0',
-    configuration,
+    version: pluginVersion(),
   });
   const pluginContents = pluginInteraction.withPluginContents(
     JSON.stringify(configuration),
     'application/graphql',
   );
 
-  interaction.expectsToReceive('a GraphQL subscription event', (builder) => {
+  interaction.expectsToReceive('a GraphQL subscription event', (builder: GraphqlAsyncMessageBuilder) => {
     builder.withJSONContent(envelope);
   });
 
   return pluginContents;
 }
 
+export { graphql, gql, DEFAULT_PLUGIN_VERSION } from './dsl';
+
 export type {
-  GraphqlHttpInteractionBuilder,
+  GraphqlApi,
+  GraphqlApiOptions,
+  GraphqlClient,
+  GraphqlInteractionBuilder,
+  GraphqlPactBuilder,
+  GraphqlQueryMatching,
+  FetchLike,
+} from './types';
+
+export type {
+  GraphqlInteractionWithPlugin,
+  GraphqlInteractionWithPluginRequest,
+  GraphqlInteractionWithPluginResponse,
+  GraphqlUnconfiguredInteraction,
   GraphqlMessageOptions,
   GraphqlMessagePactBuilder,
   GraphqlAsyncMessageWithPluginContents,
   GraphqlRequestOptions,
   GraphqlTransport,
-  PluginCapableInteractionBuilder,
 } from './types';

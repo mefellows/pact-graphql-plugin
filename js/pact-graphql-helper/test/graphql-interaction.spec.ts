@@ -8,7 +8,7 @@ function createFakeBuilder() {
     calls,
     usingPlugin: (options: any) => {
       calls.push(options);
-      return Promise.resolve(options);
+      return options;
     },
   };
 }
@@ -62,15 +62,16 @@ function createFakeHttpInteraction() {
   const calls: any[] = [];
   return {
     calls,
+    // pact-js's `usingPlugin` is synchronous: it returns `V4InteractionWithPlugin`, not a promise.
     usingPlugin: (options: any) => {
       calls.push({ plugin: options });
-      return Promise.resolve({
+      return {
         withRequest: (method: string, path: string, handler: (builder: any) => void) => {
           const request = makeRequestPart(method, path, handler);
           calls.push(request);
           return attachWillRespondWith(request, calls);
         },
-      });
+      };
     },
     withRequest: (method: string, path: string, handler: (builder: any) => void) => {
       const request = makeRequestPart(method, path, handler);
@@ -81,71 +82,39 @@ function createFakeHttpInteraction() {
 }
 
 describe('graphqlInteraction', () => {
-  it('builds plugin configuration for JSON transport', async () => {
+  // `usingPlugin` only loads the plugin: pact-js's `PluginConfig` is `{plugin, version}` and its
+  // implementation calls `addPlugin(plugin, version)`. Earlier tests here asserted on a
+  // `configuration` property passed to `usingPlugin`, which pact-js silently discarded — so they
+  // proved nothing about what the plugin actually received.
+  it('passes only the plugin name and version to usingPlugin', () => {
     const builder = createFakeBuilder();
 
-    await graphqlInteraction(builder, {
+    graphqlInteraction(builder, {
       schema: 'type Query { ping: String }',
-      query: `
-        query Ping($id: ID!) {
-          ping(id: $id) { id }
-        }
-      `,
-      operationName: 'PingQuery',
+      query: 'query Ping($id: ID!) { ping(id: $id) { id } }',
+      operationName: 'Ping',
       variables: { id: '10' },
     });
 
     expect(builder.calls).toHaveLength(1);
-    const call = builder.calls[0];
-    expect(call.plugin).toBe('graphql');
-    expect(call.version).toBe('0.0.0');
-    expect(call.configuration.transport).toBe('json_body');
-    expect(call.configuration.query_document).toContain('query Ping');
-    expect(call.configuration.operation_name).toBe('PingQuery');
-    expect(call.configuration.schema_sdl).toContain('type Query');
-    expect(call.configuration.variables_json).toBe(JSON.stringify({ id: '10' }));
+    expect(builder.calls[0]).toEqual({ plugin: 'graphql', version: '0.1.0' });
   });
 
-  it('supports query string transport with pre-stringified variables', async () => {
+  it('validates the options eagerly even though nothing is sent yet', () => {
     const builder = createFakeBuilder();
-    const variables = JSON.stringify({ search: 'prod' }, null, 2);
 
-    await graphqlInteraction(builder, {
-      query: `
-        query {
-          products {
-            id
-          }
-        }
-      `,
-      transport: 'query_string',
-      variables,
-    });
-
-    const call = builder.calls[0];
-    expect(call.configuration.transport).toBe('query_string');
-    expect(call.configuration.variables_json).toBe(variables);
-    expect(call.configuration.query_document).toContain('\n  products');
+    expect(() => graphqlInteraction(builder, { query: '   ' })).toThrow(/query is required/i);
   });
 
-  it('throws when query is missing', async () => {
+  it('throws when pre-stringified variables are invalid JSON', () => {
     const builder = createFakeBuilder();
-    await expect(
+
+    expect(() =>
       graphqlInteraction(builder, {
-        query: '   ',
+        query: 'query Ping { ping }',
+        variables: '{ not json',
       }),
-    ).rejects.toThrow('GraphQL query is required');
-  });
-
-  it('throws when pre-stringified variables are invalid JSON', async () => {
-    const builder = createFakeBuilder();
-
-    await expect(
-      graphqlInteraction(builder, {
-        query: 'query { ping }',
-        variables: '{"id": }',
-      }),
-    ).rejects.toThrow('variables string must contain valid JSON');
+    ).toThrow(/valid JSON/);
   });
 });
 
@@ -222,6 +191,8 @@ describe('graphqlHttpInteraction', () => {
     expect(responsePayload).toEqual({
       query_document: 'query GetProduct($id: ID!) {\n  product(id: $id) { id name }\n}',
       operation_name: 'GetProduct',
+      // Carried so the plugin sees `$id: ID!` as satisfied on this separate configure call.
+      variables_json: '{"id":"10"}',
       schema_sdl: 'type Query { product(id: ID!): Product } type Product { id: ID! name: String }',
       response_body_json: JSON.stringify({ data: { product: { id: '10', name: 'Backpack' } } }),
     });
