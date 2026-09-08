@@ -22,10 +22,15 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
-      # Manifest-mode outputs are keyed by package *path*, not component name.
-      tag_name: ${{ steps.release.outputs['pact-graphql-plugin--tag_name'] }}
-      version: ${{ steps.release.outputs['pact-graphql-plugin--version'] }}
+      # Manifest-mode outputs are keyed by package *path*, not component name. The two packages
+      # release independently -- a change touching only `js/` releases the npm package and not the
+      # plugin -- so each job below is gated on its own package, not on `releases_created`.
+      # Reading the plugin's tag unconditionally previously meant a js-only release passed an
+      # empty tag to `gh release upload`.
+      plugin_released: ${{ steps.release.outputs['pact-graphql-plugin--release_created'] }}
+      plugin_tag: ${{ steps.release.outputs['pact-graphql-plugin--tag_name'] }}
+      plugin_version: ${{ steps.release.outputs['pact-graphql-plugin--version'] }}
+      npm_released: ${{ steps.release.outputs['js/pact-graphql-helper--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -38,7 +43,7 @@ jobs:
   binaries:
     name: ${{ matrix.target }}
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.plugin_released == 'true'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -94,7 +99,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+          gh release upload "${{ needs.release-please.outputs.plugin_tag }}" \
             dist/${{ matrix.target }}/*.gz \
             dist/${{ matrix.target }}/*.sha256 \
             --clobber
@@ -104,7 +109,7 @@ jobs:
   manifest:
     name: Plugin manifest
     needs: [release-please, binaries]
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.plugin_released == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -113,7 +118,7 @@ jobs:
 
       - name: Stamp the released version into the manifest
         run: |
-          jq --arg v "${{ needs.release-please.outputs.version }}" '.version = $v' \
+          jq --arg v "${{ needs.release-please.outputs.plugin_version }}" '.version = $v' \
             pact-plugin.json > pact-plugin.release.json
           mv pact-plugin.release.json pact-plugin.json
           cat pact-plugin.json
@@ -122,13 +127,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+          gh release upload "${{ needs.release-please.outputs.plugin_tag }}" \
             pact-plugin.json --clobber
 
   npm:
     name: Publish npm package
     needs: [release-please, binaries]
-    if: needs.release-please.outputs.releases_created == 'true'
+    # Runs whenever the npm package released, including when the plugin did not -- but still
+    # refuses to publish if the binaries were attempted and failed. `always()` is required so the
+    # job is reachable when `binaries` is skipped.
+    if: >-
+      always()
+      && needs.release-please.outputs.npm_released == 'true'
+      && needs.binaries.result != 'failure'
+      && needs.binaries.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: read
