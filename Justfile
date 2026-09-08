@@ -1,3 +1,7 @@
+# The recipes below are POSIX shell. `just` defaults to cmd.exe on Windows, which would fail
+# on every one of them, so point Windows at bash (Git Bash / WSL, as the README requires).
+set windows-shell := ["bash", "-uc"]
+
 PLUGIN_VERSION := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "pact_graphql_plugin") | .version'`
 SUPPORTED_TARGETS := '["x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]'
 host-triple := `rustc -Vv | awk '/host/ {print $2}'`

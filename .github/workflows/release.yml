@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Opens/maintains a release PR from conventional commits. When that PR merges, this job
+  # reports `releases_created` and the jobs below attach artifacts and publish.
+  release-please:
+    name: Release PR
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      # Manifest-mode outputs are keyed by package *path*, not component name.
+      tag_name: ${{ steps.release.outputs['pact-graphql-plugin--tag_name'] }}
+      version: ${{ steps.release.outputs['pact-graphql-plugin--version'] }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # One archive per supported target, matching the layout `just bundle` already produces so
+  # the release assets and a local `just bundle-all` cannot drift.
+  binaries:
+    name: ${{ matrix.target }}
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            linker: gcc-aarch64-linux-gnu
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - uses: extractions/setup-just@v2
+
+      - name: Install cross linker
+        if: matrix.linker != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.linker }}
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      # `jq` is a bundle prerequisite and is absent from the Windows runners' Git Bash.
+      - name: Install jq (Windows)
+        if: runner.os == 'Windows'
+        run: choco install jq --no-progress -y
+        shell: pwsh
+
+      - name: Bundle
+        shell: bash
+        run: just bundle ${{ matrix.target }}
+
+      - name: Upload release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            dist/${{ matrix.target }}/*.gz \
+            dist/${{ matrix.target }}/*.sha256 \
+            --clobber
+
+  # The manifest the plugin driver reads when installing from a release. Uploaded once, not
+  # per target, because it is target independent.
+  manifest:
+    name: Plugin manifest
+    needs: [release-please, binaries]
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp the released version into the manifest
+        run: |
+          jq --arg v "${{ needs.release-please.outputs.version }}" '.version = $v' \
+            pact-plugin.json > pact-plugin.release.json
+          mv pact-plugin.release.json pact-plugin.json
+          cat pact-plugin.json
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            pact-plugin.json --clobber
+
+  npm:
+    name: Publish npm package
+    needs: [release-please, binaries]
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js/pact-graphql-helper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: js/pact-graphql-helper/package-lock.json
+
+      - run: npm ci
+
+      # Publishing an untested build would defeat the point of the gate.
+      - run: npm test
+
+      - run: npm run build
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
