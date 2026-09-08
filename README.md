@@ -251,19 +251,21 @@ whole history, and proposes another bump on every run.
 3. publishes `@pact-foundation/pact-graphql-plugin` to npm via trusted publishing (OIDC),
    with provenance and no npm token.
 
-The Rust crate and the npm package are released at the same version, so that "npm 0.3.0 works
-with plugin 0.3.0" holds. Two settings keep them together: release-please's `linked-versions`
-plugin groups them, and `bump-minor-pre-major` is set on both because the Rust and Node strategies
-otherwise disagree about what a breaking change means below 1.0.0 (minor vs major) and silently
-drift apart.
+The crate and the npm package are versioned **independently**. release-please only bumps a
+package that has releasable commits, so a change touching only `js/` bumps the npm package alone;
+the two drift apart as a matter of course, and that is fine. `linked-versions` keeps them equal
+when both release together, and `bump-minor-pre-major` is set on both so neither jumps to 1.0.0 on
+a breaking change while below 1.0 -- but neither is load-bearing.
 
-`DEFAULT_PLUGIN_VERSION` in the DSL is deliberately *not* tied to either. It is the **minimum**
-plugin version the DSL needs: the driver loads the highest installed plugin at or above it, so it
-only moves when the DSL starts relying on newer plugin behaviour. It was previously bumped
-automatically alongside the npm package, which asked for a plugin version that did not exist and
-made the plugin silently not load.
+Compatibility is expressed by `DEFAULT_PLUGIN_VERSION` in the DSL, which is the **minimum** plugin
+version it needs. The driver treats a requested version as a floor and loads the highest installed
+plugin at or above it, so this only moves when the DSL starts relying on newer plugin behaviour.
+It is deliberately not tied to either package's version: when it was bumped automatically
+alongside the npm package it asked for a plugin version that did not exist, and the plugin
+silently never loaded.
 
-`just check-versions` asserts all three agree, and runs first in CI.
+`just check-versions` asserts the floor is satisfiable by the plugin this repo builds, and runs
+first in CI. It deliberately does not require the crate and npm versions to match.
 
 ### Publishing: npm trusted publishing (OIDC)
 
