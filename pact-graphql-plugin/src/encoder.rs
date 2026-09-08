@@ -4,17 +4,12 @@ use serde_json::Value;
 use url::form_urlencoded;
 use urlencoding::encode;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Transport {
+    #[default]
     JsonBody,
     QueryString,
-}
-
-impl Default for Transport {
-    fn default() -> Self {
-        Transport::JsonBody
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

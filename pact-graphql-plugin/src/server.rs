@@ -81,7 +81,10 @@ impl GraphqlPlugin {
     /// shared, per-interaction slot keyed by plugin name that a later call would overwrite. Each
     /// content type therefore gets its own `configure_interaction` call and returns exactly one
     /// part; see `configure_response` for the response side.
-    fn configure_request(&self, config: &GraphqlPluginConfig) -> Result<ConfigureInteractionResponse> {
+    fn configure_request(
+        &self,
+        config: &GraphqlPluginConfig,
+    ) -> Result<ConfigureInteractionResponse> {
         let body = encode_body(config)?;
         let plugin_cfg = PluginConfiguration {
             interaction_configuration: Some(config_to_struct(config)?),
@@ -110,13 +113,16 @@ impl GraphqlPlugin {
     /// (`pact_ffi/src/plugins/mod.rs:229-231`), so returning `None` here leaves the request-side
     /// call's stored config (with `variables_json`, etc.) intact. Response matching is instead
     /// performed by core's own JSON matcher against the `rules` we attach directly to this part.
-    fn configure_response(&self, config: &GraphqlPluginConfig) -> Result<ConfigureInteractionResponse> {
+    fn configure_response(
+        &self,
+        config: &GraphqlPluginConfig,
+    ) -> Result<ConfigureInteractionResponse> {
         let response_json = config.response_body_json.as_deref().ok_or_else(|| {
             anyhow!("response_body_json is required to configure a GraphQL response part")
         })?;
 
-        let response_value: serde_json::Value = serde_json::from_str(response_json)
-            .context("response_body_json must be valid JSON")?;
+        let response_value: serde_json::Value =
+            serde_json::from_str(response_json).context("response_body_json must be valid JSON")?;
 
         let canonical = CanonicalGraphqlRequest {
             payload: config.request.clone(),
@@ -126,8 +132,8 @@ impl GraphqlPlugin {
         let sdl = canonical.inline_schema_sdl()?;
 
         let rules = if let Some(sdl) = sdl {
-            let schema_index = SchemaIndex::from_sdl(&sdl)
-                .context("failed to parse GraphQL schema SDL")?;
+            let schema_index =
+                SchemaIndex::from_sdl(&sdl).context("failed to parse GraphQL schema SDL")?;
 
             let mismatches = crate::response::validate_response(
                 &schema_index,
@@ -349,10 +355,8 @@ impl PactPlugin for GraphqlPlugin {
             Ok(actual) => actual,
             Err(err) => {
                 if is_validation_error(&err) {
-                    let mismatch = validation_mismatch_from_error(
-                        &err,
-                        &expected.payload.query_document,
-                    );
+                    let mismatch =
+                        validation_mismatch_from_error(&err, &expected.payload.query_document);
                     let response = build_compare_contents_response(vec![mismatch]);
                     return Ok(Response::new(response));
                 }
@@ -488,10 +492,8 @@ impl PactPlugin for GraphqlPlugin {
             Ok(actual) => actual,
             Err(err) => {
                 if is_validation_error(&err) {
-                    let mismatch = validation_mismatch_from_error(
-                        &err,
-                        &expected.payload.query_document,
-                    );
+                    let mismatch =
+                        validation_mismatch_from_error(&err, &expected.payload.query_document);
                     let response = build_verify_interaction_response(vec![mismatch]);
                     return Ok(Response::new(response));
                 }
@@ -999,7 +1001,7 @@ mod tests {
         assert!(
             json_value
                 .get("schema_inline_base64")
-                .map_or(true, |v| v.is_null()),
+                .is_none_or(|v| v.is_null()),
             "legacy duplicate should not be written"
         );
     }
@@ -1105,7 +1107,9 @@ mod tests {
             let mismatch = &mismatches.mismatches[0];
             assert_eq!(mismatch.path, "/payload/query_document/products/name");
             assert!(
-                mismatch.mismatch.contains("not selected by the actual query"),
+                mismatch
+                    .mismatch
+                    .contains("not selected by the actual query"),
                 "{}",
                 mismatch.mismatch
             );
@@ -1294,7 +1298,9 @@ mod tests {
             };
             assert_eq!(mismatch.path, "/payload/query_document/products/name");
             assert!(
-                mismatch.mismatch.contains("not selected by the actual query"),
+                mismatch
+                    .mismatch
+                    .contains("not selected by the actual query"),
                 "{}",
                 mismatch.mismatch
             );
@@ -1457,7 +1463,6 @@ mod tests {
         assert_eq!(parsed.query_document, config.query_document);
     }
 
-
     /// Guards against the whole class of bug this fixture exists for: the hand-built
     /// `pact_with_config` helper below constructs a shape by hand, so it can only prove the code
     /// is self-consistent. This one reads a pact file actually produced by `pact_ffi` (captured
@@ -1481,7 +1486,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn to_status_includes_the_cause_chain() {
         // `anyhow`'s Display prints only the outermost context, so a bare `err.to_string()` sends
@@ -1502,7 +1506,6 @@ mod tests {
             status.message()
         );
     }
-
 
     #[test]
     fn bind_address_defaults_to_ipv6_loopback_on_an_ephemeral_port() {

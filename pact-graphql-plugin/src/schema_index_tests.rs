@@ -34,7 +34,9 @@ fn resolves_field_return_types() {
     assert!(id.is_non_null());
     assert_eq!(id.innermost_named(), Some("ID"));
 
-    let name = index.field_return_type("Product", "name").expect("name exists");
+    let name = index
+        .field_return_type("Product", "name")
+        .expect("name exists");
     assert!(!name.is_non_null());
 
     assert!(index.field_return_type("Product", "nope").is_none());
@@ -43,7 +45,9 @@ fn resolves_field_return_types() {
 #[test]
 fn unwraps_list_and_non_null() {
     let index = schema_index_for(SDL).expect("schema parses");
-    let tags = index.field_return_type("Product", "tags").expect("tags exists");
+    let tags = index
+        .field_return_type("Product", "tags")
+        .expect("tags exists");
 
     // [String!]! -> NonNull(List(NonNull(String)))
     assert!(tags.is_non_null());

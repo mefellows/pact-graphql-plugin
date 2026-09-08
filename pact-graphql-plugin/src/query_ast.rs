@@ -68,9 +68,7 @@ fn select_operation(
             .ok_or_else(|| anyhow!("operation `{}` not found in query_document", name)),
         None => {
             if operations.len() > 1 {
-                bail!(
-                    "operation_name is required when query_document defines multiple operations"
-                );
+                bail!("operation_name is required when query_document defines multiple operations");
             }
             Ok(operations[0].clone())
         }
@@ -144,8 +142,7 @@ fn inline_selection_set(
                 expanded.push(Selection::Field(field));
             }
             Selection::FragmentSpread(spread) => {
-                if let Some(position) =
-                    stack.iter().position(|name| name == &spread.fragment_name)
+                if let Some(position) = stack.iter().position(|name| name == &spread.fragment_name)
                 {
                     let cycle_stack: Vec<&str> =
                         stack[position..].iter().map(String::as_str).collect();
@@ -415,7 +412,11 @@ pub(crate) fn diff_operations_with(
     match mode {
         QueryMatching::Subset => diffs
             .into_iter()
-            .filter(|diff| !diff.description.contains("is not selected by the actual query"))
+            .filter(|diff| {
+                !diff
+                    .description
+                    .contains("is not selected by the actual query")
+            })
             .collect(),
         _ => diffs,
     }

@@ -394,7 +394,7 @@ fn wire_config_carries_the_schema_exactly_once() {
         "inline_schema.base64_sdl is the canonical home for the SDL"
     );
     assert!(
-        wire.get("schema_inline_base64").map_or(true, |v| v.is_null()),
+        wire.get("schema_inline_base64").is_none_or(|v| v.is_null()),
         "the legacy duplicate must no longer be written, got: {wire:#}"
     );
 }
@@ -435,7 +435,10 @@ fn rejects_variables_that_do_not_satisfy_the_operations_declarations() {
         .expect_err("a missing required variable should be rejected at configure time");
 
     let message = format!("{err:#}");
-    assert!(message.contains("$id"), "error should name the variable, got: {message}");
+    assert!(
+        message.contains("$id"),
+        "error should name the variable, got: {message}"
+    );
 }
 
 #[test]

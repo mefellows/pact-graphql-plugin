@@ -299,12 +299,7 @@ fn validate_value(
     validate_scalar(named, value, path, mismatches);
 }
 
-fn validate_scalar(
-    named: &str,
-    value: &Value,
-    path: &str,
-    mismatches: &mut Vec<ResponseMismatch>,
-) {
+fn validate_scalar(named: &str, value: &Value, path: &str, mismatches: &mut Vec<ResponseMismatch>) {
     let ok = match named {
         "Int" => value.as_i64().is_some(),
         "Float" => value.is_number(),

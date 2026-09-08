@@ -45,7 +45,11 @@ fn reports_the_path_of_a_missing_field() {
     .unwrap();
     assert_eq!(diffs.len(), 1, "got {diffs:#?}");
     assert_eq!(diffs[0].path, "product.status");
-    assert!(diffs[0].description.contains("not selected"), "{}", diffs[0].description);
+    assert!(
+        diffs[0].description.contains("not selected"),
+        "{}",
+        diffs[0].description
+    );
 }
 
 #[test]
@@ -58,7 +62,11 @@ fn reports_the_path_of_an_unexpected_field() {
     .unwrap();
     assert_eq!(diffs.len(), 1, "got {diffs:#?}");
     assert_eq!(diffs[0].path, "product.name");
-    assert!(diffs[0].description.contains("not expected"), "{}", diffs[0].description);
+    assert!(
+        diffs[0].description.contains("not expected"),
+        "{}",
+        diffs[0].description
+    );
 }
 
 #[test]
@@ -83,7 +91,11 @@ fn reports_argument_differences() {
     .unwrap();
     assert_eq!(diffs.len(), 1, "got {diffs:#?}");
     assert_eq!(diffs[0].path, "product");
-    assert!(diffs[0].description.contains("argument"), "{}", diffs[0].description);
+    assert!(
+        diffs[0].description.contains("argument"),
+        "{}",
+        diffs[0].description
+    );
     assert!(diffs[0].expected.contains("10"));
     assert!(diffs[0].actual.contains("11"));
 }
@@ -97,7 +109,9 @@ fn reports_operation_type_differences() {
     )
     .unwrap();
     assert!(
-        diffs.iter().any(|d| d.description.contains("operation type")),
+        diffs
+            .iter()
+            .any(|d| d.description.contains("operation type")),
         "got {diffs:#?}"
     );
 }
@@ -241,9 +255,16 @@ fn exact_rejects_a_reformatted_but_equivalent_query() {
     let reformatted = "query Q {\n  product {\n    id\n    name\n    status\n  }\n}";
     let semantic =
         diff_queries_with(EXPECTED, reformatted, Some("Q"), QueryMatching::Semantic).unwrap();
-    assert!(semantic.is_empty(), "semantic tolerates formatting: {semantic:#?}");
+    assert!(
+        semantic.is_empty(),
+        "semantic tolerates formatting: {semantic:#?}"
+    );
 
     let exact = diff_queries_with(EXPECTED, reformatted, Some("Q"), QueryMatching::Exact).unwrap();
     assert_eq!(exact.len(), 1, "exact does not: {exact:#?}");
-    assert!(exact[0].description.contains("byte-for-byte"), "{}", exact[0].description);
+    assert!(
+        exact[0].description.contains("byte-for-byte"),
+        "{}",
+        exact[0].description
+    );
 }

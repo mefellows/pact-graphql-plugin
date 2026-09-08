@@ -84,8 +84,7 @@ fn rejects_a_string_literal_for_an_int_argument() {
 
 #[test]
 fn accepts_an_integer_literal_for_a_float_argument() {
-    validate_arg_query("query Q { products(rate: 3) { id } }")
-        .expect("Int coerces to Float");
+    validate_arg_query("query Q { products(rate: 3) { id } }").expect("Int coerces to Float");
 }
 
 #[test]
@@ -98,8 +97,7 @@ fn accepts_a_variable_reference_as_an_argument_value() {
 
 #[test]
 fn rejects_null_for_a_non_null_argument() {
-    let err = validate_arg_query("query Q { product(id: null) { id } }")
-        .expect_err("id is ID!");
+    let err = validate_arg_query("query Q { product(id: null) { id } }").expect_err("id is ID!");
     assert!(format!("{err:#}").contains("id"));
 }
 

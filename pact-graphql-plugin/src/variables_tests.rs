@@ -98,7 +98,10 @@ fn accepts_an_integer_for_a_float_variable() {
         "query Q($rate: Float) { products(rate: $rate) { id } }",
         json!({ "rate": 3 }),
     );
-    assert!(result.is_ok(), "Int is valid input coercion for Float: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Int is valid input coercion for Float: {result:?}"
+    );
 }
 
 #[test]

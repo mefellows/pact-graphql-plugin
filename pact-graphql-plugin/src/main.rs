@@ -113,7 +113,8 @@ fn write_env_marker(path: &PathBuf) {
         let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "<unset>".to_string());
         let log_level = std::env::var("LOG_LEVEL").unwrap_or_else(|_| "<unset>".to_string());
         let plugin_dir = std::env::var("PACT_PLUGIN_DIR").unwrap_or_else(|_| "<unset>".to_string());
-        let plugin_host = std::env::var("PACT_PLUGIN_HOST").unwrap_or_else(|_| "<unset>".to_string());
+        let plugin_host =
+            std::env::var("PACT_PLUGIN_HOST").unwrap_or_else(|_| "<unset>".to_string());
         let _ = writeln!(file, "env RUST_LOG={}", rust_log);
         let _ = writeln!(file, "env LOG_LEVEL={}", log_level);
         let _ = writeln!(file, "env PACT_PLUGIN_DIR={}", plugin_dir);

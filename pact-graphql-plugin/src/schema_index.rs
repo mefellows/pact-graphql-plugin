@@ -321,8 +321,7 @@ impl SchemaIndex {
                     .or_insert_with(|| TypeInfo::Object(ObjectTypeInfo::default()));
                 if let TypeInfo::Object(obj) = entry {
                     obj.fields.extend_fields(object_ext.fields);
-                    obj.implements
-                        .extend(object_ext.implements_interfaces.into_iter());
+                    obj.implements.extend(object_ext.implements_interfaces);
                 } else {
                     bail!(
                         "type `{}` cannot be extended as object because it was previously defined as {}",
@@ -340,7 +339,7 @@ impl SchemaIndex {
                     interface.fields.extend_fields(interface_ext.fields);
                     interface
                         .implements
-                        .extend(interface_ext.implements_interfaces.into_iter());
+                        .extend(interface_ext.implements_interfaces);
                 } else {
                     bail!(
                         "type `{}` cannot be extended as interface because it was previously defined as {}",
@@ -355,7 +354,7 @@ impl SchemaIndex {
                     .entry(union_ext.name.clone())
                     .or_insert_with(|| TypeInfo::Union(UnionTypeInfo::default()));
                 if let TypeInfo::Union(union) = entry {
-                    union.members.extend(union_ext.types.into_iter());
+                    union.members.extend(union_ext.types);
                 } else {
                     bail!(
                         "type `{}` cannot be extended as union because it was previously defined as {}",
@@ -605,34 +604,16 @@ pub(crate) struct EnumTypeInfo {
     pub(crate) values: HashSet<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct ObjectTypeInfo {
     fields: FieldCollection,
     implements: HashSet<String>,
 }
 
-impl Default for ObjectTypeInfo {
-    fn default() -> Self {
-        Self {
-            fields: FieldCollection::default(),
-            implements: HashSet::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct InterfaceTypeInfo {
     fields: FieldCollection,
     implements: HashSet<String>,
-}
-
-impl Default for InterfaceTypeInfo {
-    fn default() -> Self {
-        Self {
-            fields: FieldCollection::default(),
-            implements: HashSet::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]

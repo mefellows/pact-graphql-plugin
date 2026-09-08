@@ -63,7 +63,9 @@ fn rejects_a_field_absent_from_the_schema() {
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.product.internalSku");
     assert!(
-        mismatches[0].description.contains("not a field of type \"Product\""),
+        mismatches[0]
+            .description
+            .contains("not a field of type \"Product\""),
         "{}",
         mismatches[0].description
     );
@@ -82,7 +84,11 @@ fn rejects_a_schema_field_the_query_did_not_request() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.product.rating");
-    assert!(mismatches[0].description.contains("was not requested"), "{}", mismatches[0].description);
+    assert!(
+        mismatches[0].description.contains("was not requested"),
+        "{}",
+        mismatches[0].description
+    );
 }
 
 #[test]
@@ -96,7 +102,11 @@ fn rejects_a_missing_requested_field() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.product.status");
-    assert!(mismatches[0].description.contains("missing"), "{}", mismatches[0].description);
+    assert!(
+        mismatches[0].description.contains("missing"),
+        "{}",
+        mismatches[0].description
+    );
 }
 
 #[test]
@@ -125,7 +135,11 @@ fn rejects_null_in_a_non_null_field() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.product.status");
-    assert!(mismatches[0].description.contains("non-null"), "{}", mismatches[0].description);
+    assert!(
+        mismatches[0].description.contains("non-null"),
+        "{}",
+        mismatches[0].description
+    );
 }
 
 #[test]
@@ -152,7 +166,11 @@ fn rejects_a_scalar_of_the_wrong_json_type() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.product.rating");
-    assert!(mismatches[0].description.contains("Int"), "{}", mismatches[0].description);
+    assert!(
+        mismatches[0].description.contains("Int"),
+        "{}",
+        mismatches[0].description
+    );
 }
 
 #[test]
@@ -184,7 +202,11 @@ fn rejects_an_object_where_a_list_is_expected() {
     .unwrap();
     assert_eq!(mismatches.len(), 1, "got {mismatches:#?}");
     assert_eq!(mismatches[0].path, "$.data.products");
-    assert!(mismatches[0].description.contains("list"), "{}", mismatches[0].description);
+    assert!(
+        mismatches[0].description.contains("list"),
+        "{}",
+        mismatches[0].description
+    );
 }
 
 #[test]
