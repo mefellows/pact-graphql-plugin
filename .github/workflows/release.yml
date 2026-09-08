@@ -5,10 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+# Granted per job below rather than globally, so the publish job is the only thing that can
+# mint an OIDC token and the build jobs cannot write to pull requests.
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,6 +18,9 @@ jobs:
   release-please:
     name: Release PR
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       # Manifest-mode outputs are keyed by package *path*, not component name.
@@ -38,6 +40,8 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -102,6 +106,8 @@ jobs:
     needs: [release-please, binaries]
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -124,6 +130,11 @@ jobs:
     needs: [release-please, binaries]
     if: needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Mints the short-lived OIDC token npm exchanges for publish rights. This is the whole
+      # mechanism: there is no npm token anywhere in this workflow.
+      id-token: write
     defaults:
       run:
         working-directory: js/pact-graphql-helper
@@ -137,6 +148,20 @@ jobs:
           cache: npm
           cache-dependency-path: js/pact-graphql-helper/package-lock.json
 
+      # Trusted publishing needs npm >= 11.5.1; Node 20 still bundles npm 10.x. Pinned to the
+      # floor rather than `@latest` so a future npm major cannot silently change publish
+      # behaviour, and asserted so a regression fails here rather than at the publish step.
+      - name: Install an npm that supports trusted publishing
+        run: |
+          npm install -g 'npm@^11.5.1'
+          installed=$(npm --version)
+          echo "npm $installed"
+          # Fails loudly here rather than as an opaque auth error at the publish step.
+          if [ "$(printf '%s\n' '11.5.1' "$installed" | sort -V | head -1)" != '11.5.1' ]; then
+            echo "npm $installed is older than the 11.5.1 required for trusted publishing" >&2
+            exit 1
+          fi
+
       - run: npm ci
 
       # Publishing an untested build would defeat the point of the gate.
@@ -144,7 +169,11 @@ jobs:
 
       - run: npm run build
 
+      # No NODE_AUTH_TOKEN: authentication is the OIDC token minted from `id-token: write`,
+      # exchanged for a short-lived, workflow-scoped credential by npm.
+      #
+      # Trusted publishing generates provenance automatically and `--provenance` is documented as
+      # unnecessary, but it is passed explicitly because several reports of publishes failing
+      # without it are open against npm/cli, and it is a no-op when provenance is already on.
       - name: Publish
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

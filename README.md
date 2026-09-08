@@ -242,19 +242,57 @@ and `.github/workflows/release.yml` then:
    `.gz` + `.sha256` pairs to the GitHub release;
 2. attaches `pact-plugin.json` stamped with the released version, so the plugin driver can install
    straight from the release;
-3. publishes `@pact-foundation/pact-graphql-plugin` to npm with provenance.
+3. publishes `@pact-foundation/pact-graphql-plugin` to npm via trusted publishing (OIDC),
+   with provenance and no npm token.
 
 The Rust crate and the npm package are held at the same version by release-please's
 `linked-versions` plugin, because the DSL's `DEFAULT_PLUGIN_VERSION` has to match the plugin it
 loads. That constant carries an `x-release-please-version` annotation so it is bumped
 automatically rather than by memory.
 
-### Required repository secrets
+### Publishing: npm trusted publishing (OIDC)
 
-- `NPM_TOKEN` — an npm automation token with publish rights to the `@pact-foundation` scope.
+The npm package is published with [trusted publishing](https://docs.npmjs.com/trusted-publishers):
+the workflow mints a short-lived OIDC token which npm exchanges for workflow-scoped publish
+rights. There is **no npm token in this repository** — nothing to store, rotate, or leak. npm
+generates provenance attestations automatically for trusted publishes.
 
-`GITHUB_TOKEN` is provided by Actions and needs no setup, but the repository must allow GitHub
-Actions to create and approve pull requests for release-please to open its PR.
+One-time setup, on npmjs.com at
+`https://www.npmjs.com/package/@pact-foundation/pact-graphql-plugin/access` (per-package, not
+under your user settings):
+
+| Field | Value |
+|---|---|
+| Publisher | GitHub Actions |
+| Organization or user | the owner of **this** repository |
+| Repository | `pact-graphql-plugin` |
+| Workflow filename | `release.yml` |
+| Environment | leave empty, unless you add an `environment:` to the `npm` job |
+
+Two things to know before the first release:
+
+1. **npm cannot configure a trusted publisher for a package that does not exist yet.** The very
+   first publish of `@pact-foundation/pact-graphql-plugin` has to be done manually (or with a
+   short-lived granular token) to create the package; trusted publishing can be configured
+   immediately afterwards and every subsequent release goes through OIDC. This is an npm
+   limitation, not a workflow one — unlike PyPI, npm has no "pending publisher" concept.
+
+2. **The repository owner must match.** Trusted publishing authorises a specific
+   `owner/repository`, and provenance records it, so both must be the repository the workflow
+   actually runs in. `package.json`'s `repository` field and `go/pactgraphql/go.mod` currently say
+   `pact-foundation/pact-graphql-plugin`. If releases are cut from a different owner, either move
+   the repository first or change those to match — a mismatch shows up as a provenance or
+   authorisation failure at publish time.
+
+The workflow needs npm >= 11.5.1 for trusted publishing (Node 20 still bundles npm 10.x), so the
+publish job installs it and asserts the version rather than letting an old npm fail later as an
+opaque authentication error.
+
+### Required repository settings
+
+- No secrets. Publishing uses OIDC; the release jobs use `GITHUB_TOKEN`, which Actions provides.
+- Settings → Actions → General → **Allow GitHub Actions to create and approve pull requests**, so
+  release-please can open its PR.
 
 ## Distribution
 
