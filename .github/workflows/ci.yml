@@ -15,6 +15,15 @@ env:
   PACT_DO_NOT_TRACK: 'true'
 
 jobs:
+  # Cheap and first: a version mismatch between the crate, the npm package and the DSL's plugin
+  # floor breaks the example suite with errors that point nowhere near the cause.
+  versions:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-versions.sh
+
   rust:
     name: Rust core (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -127,6 +136,19 @@ jobs:
           # Taken from go.mod rather than pinned here, so the two cannot drift.
           go-version-file: go/pactgraphql/go.mod
           cache-dependency-path: go/pactgraphql/go.sum
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v2
+
+      # The Go tests are integration tests: they build real pacts through the plugin, so the
+      # plugin has to be installed, not just pact-go's native library. The binding asks for
+      # plugin version "0.0.0", which the driver treats as a floor, so any installed build
+      # satisfies it.
+      - name: Build and install the plugin
+        run: just install
 
       # pact-go links against the native pact_ffi library, which is not vendored. The CLI must be
       # installed at the *same version the module depends on*: the library it downloads is chosen

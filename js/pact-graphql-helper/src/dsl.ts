@@ -15,10 +15,21 @@ import type {
 } from './types';
 
 /**
- * The plugin version this helper is built against. Overridable per-API for pinning, or via
- * `PACT_GRAPHQL_PLUGIN_VERSION` for CI, but a consumer author should never have to think about it.
+ * The **minimum** plugin version this DSL needs, not the version of this package.
+ *
+ * The plugin driver treats the version as a floor, not a pin: it loads the highest installed
+ * plugin whose version is `>= this` (`pact-plugins` `utils::versions_compatible`), and an omitted
+ * version matches anything. So this only has to move when the DSL starts depending on plugin
+ * behaviour that older plugins do not have.
+ *
+ * Deliberately *not* wired to release-please. It previously carried an `x-release-please-version`
+ * annotation, which bumped it in step with the npm package; when the npm package went to 1.0.0
+ * while the plugin went to 0.2.0, the DSL asked for `graphql:1.0.0`, no such plugin was installed,
+ * and every interaction was silently recorded without the plugin ever being consulted.
+ *
+ * Overridable per-API, or via `PACT_GRAPHQL_PLUGIN_VERSION`.
  */
-export const DEFAULT_PLUGIN_VERSION = '0.1.0'; // x-release-please-version
+export const DEFAULT_PLUGIN_VERSION = '0.1.0';
 
 const GRAPHQL_REQUEST_CONTENT_TYPE = 'application/graphql';
 const GRAPHQL_RESPONSE_CONTENT_TYPE = 'application/graphql-response';

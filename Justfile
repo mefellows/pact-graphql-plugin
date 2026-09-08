@@ -14,6 +14,10 @@ host-triple := `rustc -Vv | awk '/host/ {print $2}'`
 version:
 	@printf "%s\n" "{{PLUGIN_VERSION}}"
 
+# Checks the plugin crate, the npm package and the DSL's minimum plugin version agree.
+check-versions:
+	@./scripts/check-versions.sh
+
 target-label target="":
 	@target_value="{{target}}"; \
 	target_value="${target_value#target=}"; \
