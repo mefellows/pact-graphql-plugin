@@ -245,10 +245,19 @@ and `.github/workflows/release.yml` then:
 3. publishes `@pact-foundation/pact-graphql-plugin` to npm via trusted publishing (OIDC),
    with provenance and no npm token.
 
-The Rust crate and the npm package are held at the same version by release-please's
-`linked-versions` plugin, because the DSL's `DEFAULT_PLUGIN_VERSION` has to match the plugin it
-loads. That constant carries an `x-release-please-version` annotation so it is bumped
-automatically rather than by memory.
+The Rust crate and the npm package are released at the same version, so that "npm 0.3.0 works
+with plugin 0.3.0" holds. Two settings keep them together: release-please's `linked-versions`
+plugin groups them, and `bump-minor-pre-major` is set on both because the Rust and Node strategies
+otherwise disagree about what a breaking change means below 1.0.0 (minor vs major) and silently
+drift apart.
+
+`DEFAULT_PLUGIN_VERSION` in the DSL is deliberately *not* tied to either. It is the **minimum**
+plugin version the DSL needs: the driver loads the highest installed plugin at or above it, so it
+only moves when the DSL starts relying on newer plugin behaviour. It was previously bumped
+automatically alongside the npm package, which asked for a plugin version that did not exist and
+made the plugin silently not load.
+
+`just check-versions` asserts all three agree, and runs first in CI.
 
 ### Publishing: npm trusted publishing (OIDC)
 

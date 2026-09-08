@@ -5,13 +5,15 @@
       "release-type": "rust",
       "package-name": "pact_graphql_plugin",
       "include-component-in-tag": false,
-      "component": "plugin"
+      "component": "plugin",
+      "bump-minor-pre-major": true
     },
     "js/pact-graphql-helper": {
       "release-type": "node",
       "package-name": "@pact-foundation/pact-graphql-plugin",
       "component": "npm",
-      "skip-github-release": true
+      "skip-github-release": true,
+      "bump-minor-pre-major": true
     }
   },
   "plugins": [
