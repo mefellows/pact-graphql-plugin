@@ -124,13 +124,21 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          # Taken from go.mod rather than pinned here, so the two cannot drift.
+          go-version-file: go/pactgraphql/go.mod
           cache-dependency-path: go/pactgraphql/go.sum
 
-      # pact-go links against the native pact_ffi library, which is not vendored.
+      # pact-go links against the native pact_ffi library, which is not vendored. The CLI must be
+      # installed at the *same version the module depends on*: the library it downloads is chosen
+      # by the CLI's version, and a newer one exports a different symbol set. Installing @latest
+      # against a module on v2.4.2 fetched libpact_ffi 0.5.6 and failed to link with undefined
+      # references to `pactffi_verify` and `pactffi_create_mock_server_for_pact`.
       - name: Install pact-go native libraries
+        working-directory: go/pactgraphql
         run: |
-          go install github.com/pact-foundation/pact-go/v2@latest
+          version=$(go list -m -f '{{.Version}}' github.com/pact-foundation/pact-go/v2)
+          echo "installing pact-go CLI $version to match the module"
+          go install "github.com/pact-foundation/pact-go/v2@${version}"
           sudo "$(go env GOPATH)/bin/pact-go" -l DEBUG install
 
       - name: Test

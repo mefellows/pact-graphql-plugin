@@ -1,5 +1,10 @@
-# The recipes below are POSIX shell. `just` defaults to cmd.exe on Windows, which would fail
-# on every one of them, so point Windows at bash (Git Bash / WSL, as the README requires).
+# The recipes below are bash: they use `set -o pipefail`, which `just`'s default `sh` does not
+# support where /bin/sh is dash (Debian/Ubuntu, and so every Linux CI runner). macOS gets away
+# with it because its /bin/sh is bash in POSIX mode, which is why this only showed up in CI.
+set shell := ["bash", "-uc"]
+
+# `just` defaults to cmd.exe on Windows regardless of `shell`, which would fail on every recipe
+# here, so point it at bash too (Git Bash / WSL, as the README requires).
 set windows-shell := ["bash", "-uc"]
 
 PLUGIN_VERSION := `cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "pact_graphql_plugin") | .version'`
