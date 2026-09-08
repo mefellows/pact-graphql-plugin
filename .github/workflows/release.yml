@@ -169,6 +169,18 @@ jobs:
 
       - run: npm run build
 
+      # npm verifies the provenance attestation against `repository.url`, and rejects the publish
+      # with a 422 when they disagree. Provenance necessarily records the repository the build
+      # actually ran in, so the manifest is aligned to that here rather than to whatever is
+      # committed -- which keeps publishing working if the repository is ever moved or forked,
+      # instead of failing after a release has already been tagged.
+      - name: Align repository metadata with the publishing repository
+        run: |
+          npm pkg set "repository.url=git+https://github.com/${GITHUB_REPOSITORY}.git"
+          npm pkg set "homepage=https://github.com/${GITHUB_REPOSITORY}#readme"
+          npm pkg set "bugs.url=https://github.com/${GITHUB_REPOSITORY}/issues"
+          npm pkg get repository homepage bugs
+
       # No NODE_AUTH_TOKEN: authentication is the OIDC token minted from `id-token: write`,
       # exchanged for a short-lived, workflow-scoped credential by npm.
       #

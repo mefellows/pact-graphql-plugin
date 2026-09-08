@@ -35,12 +35,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pact-foundation/pact-graphql-plugin.git",
+    "url": "git+https://github.com/mefellows/pact-graphql-plugin.git",
     "directory": "js/pact-graphql-helper"
   },
-  "homepage": "https://github.com/pact-foundation/pact-graphql-plugin#readme",
+  "homepage": "https://github.com/mefellows/pact-graphql-plugin#readme",
   "bugs": {
-    "url": "https://github.com/pact-foundation/pact-graphql-plugin/issues"
+    "url": "https://github.com/mefellows/pact-graphql-plugin/issues"
   },
   "publishConfig": {
     "access": "public"
