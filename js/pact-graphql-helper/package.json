@@ -1,18 +1,25 @@
 {
-  "name": "pact-graphql-helper",
-  "version": "1.0.0",
-  "description": "Helper utilities for configuring Pact GraphQL plugin interactions",
+  "name": "@pact-foundation/pact-graphql-plugin",
+  "version": "0.1.0",
+  "description": "Pact GraphQL plugin: consumer DSL for schema-aware GraphQL contract tests",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run && npm run typecheck",
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
-  "keywords": [],
+  "keywords": [
+    "pact",
+    "graphql",
+    "contract-testing",
+    "consumer-driven-contracts",
+    "pact-plugin"
+  ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
@@ -25,5 +32,17 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pact-foundation/pact-graphql-plugin.git",
+    "directory": "js/pact-graphql-helper"
+  },
+  "homepage": "https://github.com/pact-foundation/pact-graphql-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/pact-foundation/pact-graphql-plugin/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

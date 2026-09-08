@@ -5,7 +5,7 @@ This repository hosts the WIP GraphQL Pact plugin plus supporting tooling.
 ## Components
 
 - `pact-graphql-plugin/`: Rust plugin server implementing the Pact plugin protocol for GraphQL requests.
-- `js/pact-graphql-helper/`: TypeScript helper that lets Pact consumers hand a GraphQL document + variables to the plugin without hand-crafting HTTP request bodies.
+- `js/pact-graphql-helper/`: source for the `@pact-foundation/pact-graphql-plugin` npm package — the TypeScript consumer DSL.
 
 ## Quick Start (JS Consumer)
 
@@ -15,7 +15,7 @@ contributes only GraphQL and expectations.
 ```ts
 import { readFileSync } from 'node:fs';
 import { PactV4 } from '@pact-foundation/pact';
-import { graphql, gql } from 'pact-graphql-helper';
+import { graphql, gql } from '@pact-foundation/pact-graphql-plugin';
 
 const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
 const api = graphql(pact, { schema: readFileSync('schema.graphql', 'utf8') });
@@ -102,12 +102,12 @@ Note that validation runs when the plugin *contents* are set, not when the plugi
 
 
 ```bash
-npm install --save-dev @pact-foundation/pact @pact-foundation/pact-graphql-helper
+npm install --save-dev @pact-foundation/pact @pact-foundation/pact-graphql-plugin
 ```
 
 ```ts
 import { PactV4 } from '@pact-foundation/pact';
-import { graphqlInteraction } from '@pact-foundation/pact-graphql-helper';
+import { graphqlInteraction } from '@pact-foundation/pact-graphql-plugin';
 
 const pact = new PactV4({ consumer: 'product-consumer', provider: 'product-provider' });
 const interaction = pact.addInteraction('fetch a product via GraphQL');
@@ -225,6 +225,36 @@ npm run test
 ```
 
 > Running the example requires the GraphQL plugin binary to be discoverable by Pact Core. Run `just install` from the repo root to copy the current build into `~/.pact/plugins/graphql-<version>/` before executing the tests.
+
+## CI and releases
+
+`.github/workflows/ci.yml` runs on every PR: Rust fmt/clippy/test on Linux, macOS and
+Windows; the consumer DSL's tests and type check (including the pact-js conformance check); the
+Go binding; the example end to end against a freshly built plugin, including provider
+verification; and a bundle smoke test so a broken release recipe is caught on the PR rather than
+during a release.
+
+Releases are driven by [release-please](https://github.com/googleapis/release-please) from
+conventional commits. Merging to `main` maintains a release PR; merging that PR tags the release
+and `.github/workflows/release.yml` then:
+
+1. builds `pact-graphql-plugin` for all six supported targets via `just bundle`, and attaches the
+   `.gz` + `.sha256` pairs to the GitHub release;
+2. attaches `pact-plugin.json` stamped with the released version, so the plugin driver can install
+   straight from the release;
+3. publishes `@pact-foundation/pact-graphql-plugin` to npm with provenance.
+
+The Rust crate and the npm package are held at the same version by release-please's
+`linked-versions` plugin, because the DSL's `DEFAULT_PLUGIN_VERSION` has to match the plugin it
+loads. That constant carries an `x-release-please-version` annotation so it is bumped
+automatically rather than by memory.
+
+### Required repository secrets
+
+- `NPM_TOKEN` — an npm automation token with publish rights to the `@pact-foundation` scope.
+
+`GITHUB_TOKEN` is provided by Actions and needs no setup, but the repository must allow GitHub
+Actions to create and approve pull requests for release-please to open its PR.
 
 ## Distribution
 

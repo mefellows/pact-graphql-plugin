@@ -18,7 +18,7 @@ import type {
  * The plugin version this helper is built against. Overridable per-API for pinning, or via
  * `PACT_GRAPHQL_PLUGIN_VERSION` for CI, but a consumer author should never have to think about it.
  */
-export const DEFAULT_PLUGIN_VERSION = '0.1.0';
+export const DEFAULT_PLUGIN_VERSION = '0.1.0'; // x-release-please-version
 
 const GRAPHQL_REQUEST_CONTENT_TYPE = 'application/graphql';
 const GRAPHQL_RESPONSE_CONTENT_TYPE = 'application/graphql-response';

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 import { PactV4 } from '@pact-foundation/pact';
-import { graphqlHttpInteraction, graphqlInteraction, graphqlRequestBody } from 'pact-graphql-helper';
+import { graphqlHttpInteraction, graphqlInteraction, graphqlRequestBody } from '@pact-foundation/pact-graphql-plugin';
 
 process.env.PACT_GRAPHQL_PLUGIN_VERSION ??= '0.1.0';
 

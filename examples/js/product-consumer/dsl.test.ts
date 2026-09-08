@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 import { PactV4 } from '@pact-foundation/pact';
-import { graphql, gql } from 'pact-graphql-helper';
+import { graphql, gql } from '@pact-foundation/pact-graphql-plugin';
 
 const schema = readFileSync(resolve(__dirname, 'schema.graphql'), 'utf8');
 
