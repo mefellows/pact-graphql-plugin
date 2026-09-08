@@ -12,7 +12,6 @@
       "release-type": "node",
       "package-name": "@pact-foundation/pact-graphql-plugin",
       "component": "npm",
-      "skip-github-release": true,
       "bump-minor-pre-major": true
     }
   },

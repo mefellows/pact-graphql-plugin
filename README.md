@@ -238,6 +238,12 @@ Releases are driven by [release-please](https://github.com/googleapis/release-pl
 conventional commits. Merging to `main` maintains a release PR; merging that PR tags the release
 and `.github/workflows/release.yml` then:
 
+Two tags are cut per version: `vX.Y.Z` for the plugin (this is the GitHub release that carries the
+binaries) and `npm-vX.Y.Z` for the npm package. The second exists only to anchor release-please:
+without a tag of its own, it cannot tell where the npm component was last released, rescans the
+whole history, and proposes another bump on every run.
+
+
 1. builds `pact-graphql-plugin` for all six supported targets via `just bundle`, and attaches the
    `.gz` + `.sha256` pairs to the GitHub release;
 2. attaches `pact-plugin.json` stamped with the released version, so the plugin driver can install
