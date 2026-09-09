@@ -26,10 +26,12 @@ cd "$(dirname "$0")/.."
 cargo_version=$(grep -m1 '^version' pact-graphql-plugin/Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
 npm_version=$(node -p "require('./js/pact-graphql-helper/package.json').version")
 floor=$(grep -m1 "DEFAULT_PLUGIN_VERSION = " js/pact-graphql-helper/src/dsl.ts | sed -E "s/.*'(.*)'.*/\1/")
+installs=$(grep -m1 "^export const PLUGIN_VERSION = " js/pact-graphql-helper/src/install.ts | sed -E "s/.*'(.*)'.*/\1/")
 
 echo "plugin crate (Cargo.toml):   $cargo_version"
 echo "npm package (package.json):  $npm_version"
 echo "DSL minimum plugin version:  $floor"
+echo "npm installs plugin version: $installs"
 echo
 
 if [ "$cargo_version" != "$npm_version" ]; then
@@ -49,4 +51,22 @@ if [ "$lowest" != "$floor" ]; then
   exit 1
 fi
 
-echo "OK: the DSL's plugin floor is satisfiable by this build."
+# The installer downloads a specific plugin release. Pointing it at a version this repo has not
+# reached yet means downloading an asset from a release that does not exist.
+newest=$(printf '%s\n%s\n' "$installs" "$cargo_version" | sort -V | tail -1)
+if [ "$newest" != "$cargo_version" ]; then
+  echo "FAIL: the npm package installs plugin $installs but this repo is only at $cargo_version." >&2
+  echo "      That release does not exist yet, so the download would 404. Update PLUGIN_VERSION" >&2
+  echo "      in js/pact-graphql-helper/src/install.ts once the plugin release is out." >&2
+  exit 1
+fi
+
+# What gets installed must itself satisfy the floor the DSL asks for.
+lowest_installed=$(printf '%s\n%s\n' "$floor" "$installs" | sort -V | head -1)
+if [ "$lowest_installed" != "$floor" ]; then
+  echo "FAIL: the npm package installs plugin $installs, below the DSL's floor of $floor." >&2
+  echo "      The plugin it installs would not satisfy the version it then asks for." >&2
+  exit 1
+fi
+
+echo "OK: the DSL's plugin floor is satisfiable, and the installed version satisfies it."

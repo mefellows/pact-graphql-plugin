@@ -239,6 +239,14 @@ export async function graphqlMessageInteraction<T = unknown>(
 
 export { graphql, gql, DEFAULT_PLUGIN_VERSION } from './dsl';
 
+export {
+  installPlugin,
+  defaultPluginRoot,
+  isAlreadySatisfied,
+  PLUGIN_VERSION,
+} from './install';
+export type { InstallOptions, InstallResult } from './install';
+
 export type {
   GraphqlApi,
   GraphqlApiOptions,

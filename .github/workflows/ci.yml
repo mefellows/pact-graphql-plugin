@@ -77,6 +77,17 @@ jobs:
 
       - run: npm run build
 
+      # Exercises the real download path against the published release, so a broken asset name,
+      # a missing checksum, or a PLUGIN_VERSION pointing at a release that was never cut fails
+      # here rather than in a consumer's `npm install`.
+      - name: Install the plugin from the published release
+        env:
+          PACT_PLUGIN_DIR: ${{ runner.temp }}/pact-plugins
+        run: |
+          node ./bin/pact-graphql-plugin.js install
+          test -x "$PACT_PLUGIN_DIR/graphql-$(node ./bin/pact-graphql-plugin.js --version)/pact-graphql-plugin"
+          echo "plugin installed and executable"
+
   example:
     name: Example consumer + provider verification
     runs-on: ubuntu-latest

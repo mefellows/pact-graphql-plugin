@@ -6,12 +6,15 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
+    "bin",
     "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run && npm run typecheck",
-    "typecheck": "tsc -p tsconfig.typecheck.json"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "postinstall": "node ./bin/postinstall.js",
+    "install-plugin": "node ./bin/pact-graphql-plugin.js install"
   },
   "keywords": [
     "pact",
@@ -44,5 +47,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "bin": {
+    "pact-graphql-plugin": "bin/pact-graphql-plugin.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

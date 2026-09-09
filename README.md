@@ -9,6 +9,32 @@ This repository hosts the WIP GraphQL Pact plugin plus supporting tooling.
 
 ## Quick Start (JS Consumer)
 
+```bash
+npm install --save-dev @pact-foundation/pact @pact-foundation/pact-graphql-plugin
+```
+
+Installing the npm package also installs the plugin binary into `~/.pact/plugins/`, so there is
+nothing else to set up. It downloads the build for your platform from the matching GitHub release
+and verifies its SHA-256 before writing anything.
+
+If a compatible plugin is already installed it is left alone. If the install is skipped — many
+organisations run npm with `--ignore-scripts`, and the hook is deliberately never fatal — run it
+explicitly:
+
+```bash
+npx pact-graphql-plugin install          # --force to reinstall
+```
+
+| Variable | Effect |
+|---|---|
+| `PACT_PLUGIN_DIR` | Where plugins are installed (default `~/.pact/plugins`) |
+| `PACT_GRAPHQL_PLUGIN_SKIP_INSTALL` | Skip the automatic postinstall |
+| `PACT_GRAPHQL_PLUGIN_REPOSITORY` | GitHub repository to download releases from |
+
+Working from a source checkout instead? `just install` builds and installs the plugin from this
+repo, which is what the examples and CI use.
+
+
 The `graphql(...)` DSL states the schema and endpoint once per pact; each interaction then
 contributes only GraphQL and expectations.
 
