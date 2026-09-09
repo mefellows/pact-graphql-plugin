@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/mefellows/pact-graphql-plugin/compare/npm-v0.3.0...npm-v0.4.0) (2026-09-09)
+
+
+### Features
+
+* **js:** install the plugin binary with the npm package ([f6bf073](https://github.com/mefellows/pact-graphql-plugin/commit/f6bf07364f27af40d72840766acc5d701b4cb78d))
+
 ## [0.3.0](https://github.com/mefellows/pact-graphql-plugin/compare/npm-v0.2.0...npm-v0.3.0) (2026-09-08)
 
 
